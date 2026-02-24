@@ -11,6 +11,7 @@ import {
   type DocumentData,
   doc,
   setDoc,
+  addDoc,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 import { auth, db } from "./firebase";
@@ -155,4 +156,19 @@ export const saveSwipe = async (payload: {
     { merge: true }
   );
 };
+
+export async function saveLead(payload: {
+  email: string;
+  subtotal: number;
+  bagCount: number;
+  wishlistCount: number;
+}) {
+  const user = await ensureUser();
+
+  await addDoc(collection(db, "leads"), {
+    uid: user.uid,
+    ...payload,
+    createdAt: serverTimestamp(),
+  });
+}
 
