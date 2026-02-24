@@ -105,6 +105,10 @@ const App: React.FC = () => {
   const [discoveryStep, setDiscoveryStep] = useState(0);
   const [cursor, setCursor] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [leadEmail, setLeadEmail] = useState("");
+  const [leadStatus, setLeadStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [leadError, setLeadError] = useState<string>("");
   const [tagScores, setTagScores] = useState<TagScores>(() => loadTagScores());
   const swipedRef = useRef<Set<string>>(new Set());
   const refineLockRef = useRef(false);
@@ -290,6 +294,34 @@ const App: React.FC = () => {
     setCurrentIndex(prev => prev + 1);
     setSelectedProduct(null);
     // Optionally, auto-load more if needed
+  };
+
+  const subtotal = userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0);
+
+  const submitLead = async () => {
+    setLeadError("");
+
+    const email = leadEmail.trim();
+    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!ok) {
+      setLeadError("Enter a valid email.");
+      return;
+    }
+
+    setLeadStatus("saving");
+    try {
+      await Firestore.saveLead({
+        email,
+        subtotal,
+        bagCount: userPrefs.cart.length,
+        wishlistCount: userPrefs.wishlist.length,
+      });
+      setLeadStatus("saved");
+    } catch (e) {
+      console.error(e);
+      setLeadStatus("error");
+      setLeadError("Couldn’t save right now. Try again.");
+    }
   };
 
 
@@ -783,11 +815,31 @@ const App: React.FC = () => {
                   <span className="font-bold text-slate-400 uppercase tracking-widest text-xs">Subtotal</span>
                   <span className="text-3xl font-black text-slate-900">${userPrefs.cart.reduce((s, i) => s + i.price, 0).toFixed(2)}</span>
                </div>
-               <button className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50" disabled={userPrefs.cart.length === 0}>Checkout</button>
+               <button
+                 onClick={() => setShowCheckout(true)}
+                 className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
+                 disabled={userPrefs.cart.length === 0}
+               >
+                 Checkout
+               </button>
             </div>
           </div>
         )}
       </main>
+
+      {showCheckout && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl p-6">
+            <div className="text-2xl font-black">Checkout modal opened ✅</div>
+            <button
+              className="mt-4 w-full py-3 bg-indigo-600 text-white rounded-xl font-bold"
+              onClick={() => setShowCheckout(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modern Navigation Bar */}
       <nav className="bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[55]">
