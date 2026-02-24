@@ -816,7 +816,12 @@ const App: React.FC = () => {
                   <span className="text-3xl font-black text-slate-900">${userPrefs.cart.reduce((s, i) => s + i.price, 0).toFixed(2)}</span>
                </div>
                <button
-                 onClick={() => setShowCheckout(true)}
+                 onClick={() => {
+                   setLeadStatus("idle");
+                   setLeadEmail("");
+                   setLeadError("");
+                   setShowCheckout(true);
+                 }}
                  className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
                  disabled={userPrefs.cart.length === 0}
                >
@@ -828,15 +833,80 @@ const App: React.FC = () => {
       </main>
 
       {showCheckout && (
-        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-6">
-            <div className="text-2xl font-black">Checkout modal opened ✅</div>
-            <button
-              className="mt-4 w-full py-3 bg-indigo-600 text-white rounded-xl font-bold"
-              onClick={() => setShowCheckout(false)}
-            >
-              Close
-            </button>
+        <div
+          className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-end justify-center p-4"
+          onClick={() => setShowCheckout(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-[2.5rem] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900">Checkout is coming soon</h3>
+                <p className="text-slate-500 text-sm mt-1">
+                  Want early access? Drop your email and I’ll notify you.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCheckout(false)}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
+              <div className="flex justify-between text-sm font-bold">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="text-slate-900">${subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xs mt-2 text-slate-500">
+                <span>Bag items: {userPrefs.cart.length}</span>
+                <span>Saved: {userPrefs.wishlist.length}</span>
+              </div>
+            </div>
+
+            {leadStatus === "saved" ? (
+              <div className="text-center py-6">
+                <div className="text-emerald-600 font-black text-lg">You’re on the list ✅</div>
+                <p className="text-slate-500 text-sm mt-1">Thanks! I’ll email you when checkout is live.</p>
+                <button
+                  onClick={() => setShowCheckout(false)}
+                  className="mt-5 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700"
+                >
+                  Back to browsing
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
+                  Email
+                </label>
+                <input
+                  value={leadEmail}
+                  onChange={(e) => setLeadEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+
+                {leadError && (
+                  <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>
+                )}
+
+                <button
+                  onClick={submitLead}
+                  disabled={leadStatus === "saving"}
+                  className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {leadStatus === "saving" ? "Saving..." : "Notify me"}
+                </button>
+
+                <p className="text-[11px] text-slate-400 mt-3">
+                  We’ll only use this to contact you about checkout. No spam.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
