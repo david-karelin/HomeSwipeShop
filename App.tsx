@@ -324,6 +324,11 @@ const App: React.FC = () => {
     }
   };
 
+  const share = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    alert("Link copied ✅");
+  };
+
 
   const refineRecommendations = async () => {
     if (refineLockRef.current) return;
@@ -876,6 +881,12 @@ const App: React.FC = () => {
                   className="mt-5 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700"
                 >
                   Back to browsing
+                </button>
+                <button
+                  onClick={share}
+                  className="mt-3 w-full py-4 bg-slate-100 text-slate-700 rounded-2xl font-bold hover:bg-slate-200"
+                >
+                  Share this app
                 </button>
               </div>
             ) : (

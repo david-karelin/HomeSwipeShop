@@ -11,7 +11,6 @@ import {
   type DocumentData,
   doc,
   setDoc,
-  addDoc,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 import { auth, db } from "./firebase";
@@ -165,10 +164,21 @@ export async function saveLead(payload: {
 }) {
   const user = await ensureUser();
 
-  await addDoc(collection(db, "leads"), {
-    uid: user.uid,
-    ...payload,
-    createdAt: serverTimestamp(),
-  });
+  const email = payload.email.trim().toLowerCase();
+  const leadId = email.replace(/[^a-z0-9]/g, "_");
+
+  await setDoc(
+    doc(collection(db, "leads"), leadId),
+    {
+      uid: user.uid,
+      email,
+      subtotal: Number(payload.subtotal || 0),
+      bagCount: Number(payload.bagCount || 0),
+      wishlistCount: Number(payload.wishlistCount || 0),
+      createdAt: serverTimestamp(),
+      source: "checkout_modal",
+    },
+    { merge: true }
+  );
 }
 
