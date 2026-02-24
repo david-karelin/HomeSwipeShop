@@ -1,0 +1,5 @@
+{
+  "name": "SwipeShop - AI Discovery",
+  "description": "A Tinder-style product discovery app where users swipe to like or dislike items, with an AI-powered recommendation algorithm and personalized shopping carts.",
+  "requestFramePermissions": []
+}
