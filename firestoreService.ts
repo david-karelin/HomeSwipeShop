@@ -36,6 +36,9 @@ function normalizeProduct(id: string, data: any): Product {
     imageUrl: data.imageUrl ?? data.imageURL ?? "https://picsum.photos/seed/fallback/600/600",
     tags: Array.isArray(data.tags) ? data.tags : [],
     matchScore: Number(data.matchScore ?? 85),
+    checkoutType: data.checkoutType,
+    merchant: data.merchant,
+    purchaseUrl: data.purchaseUrl,
   };
 }
 
@@ -165,12 +168,45 @@ export async function saveLead(payload: {
 }) {
   const user = await ensureUser();
 
-  const id = payload.email.trim().toLowerCase();
+  const email = payload.email.trim().toLowerCase();
   await setDoc(
-    doc(db, "leads", id),
-    { uid: user.uid, ...payload, createdAt: serverTimestamp(), source: "checkout_modal" },
+    doc(db, "leads", email),
+    {
+      uid: user.uid,
+      email,
+      subtotal: payload.subtotal,
+      bagCount: payload.bagCount,
+      wishlistCount: payload.wishlistCount,
+      createdAt: serverTimestamp(),
+      source: "checkout_modal",
+    },
     { merge: true }
   );
+}
+
+type EventType = "buy_click" | "wishlist_add" | "cart_add";
+
+export async function logEvent(payload: {
+  type: EventType;
+  productId: string;
+  purchaseUrl?: string;
+  source?: string;
+}) {
+  const user = await ensureUser();
+
+  const base: any = {
+    type: payload.type,
+    uid: user.uid,
+    productId: payload.productId,
+    source: payload.source ?? "unknown",
+    createdAt: serverTimestamp(),
+  };
+
+  if (payload.type === "buy_click") {
+    base.purchaseUrl = payload.purchaseUrl ?? "";
+  }
+
+  await addDoc(collection(db, "events"), base);
 }
 
 export async function logBuyClick(payload: {
@@ -178,15 +214,6 @@ export async function logBuyClick(payload: {
   purchaseUrl: string;
   source?: string;
 }) {
-  const user = await ensureUser();
-
-  await addDoc(collection(db, "events"), {
-    type: "buy_click",
-    uid: user.uid,
-    productId: payload.productId,
-    purchaseUrl: payload.purchaseUrl,
-    source: payload.source ?? "checkout_modal",
-    createdAt: serverTimestamp(),
-  });
+  return logEvent({ type: "buy_click", ...payload, source: payload.source ?? "checkout_modal" });
 }
 

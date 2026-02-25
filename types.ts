@@ -9,6 +9,11 @@ export interface Product {
   imageUrl: string;
   tags: string[];
   matchScore?: number; // Calculated by the ML algorithm
+
+  // Affiliate checkout fields (optional)
+  checkoutType?: "affiliate" | "stripe";
+  merchant?: string;
+  purchaseUrl?: string;
 }
 
 export interface UserPersona {

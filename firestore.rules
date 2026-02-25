@@ -35,6 +35,26 @@ service cloud.firestore {
       allow read, delete: if false;
     }
 
+    match /events/{eventId} {
+      function isAllowedType(t) {
+        return t == "buy_click" || t == "wishlist_add" || t == "cart_add";
+      }
+
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.type is string
+        && isAllowedType(request.resource.data.type)
+        && request.resource.data.productId is string
+        && (request.resource.data.type != "buy_click" || request.resource.data.purchaseUrl is string)
+        && (!("source" in request.resource.data) || request.resource.data.source is string);
+
+      allow read, update, delete: if false;
+    }
+
+    match /swipes/{docId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

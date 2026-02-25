@@ -4,6 +4,7 @@ import { Product, UserPreferences, AppState, UserPersona } from './types';
 import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
+import HowItWorksModal from './src/components/HowItWorksModal';
 import { 
   Search, 
   ShoppingBag, 
@@ -110,6 +111,7 @@ const App: React.FC = () => {
   const [leadEmail, setLeadEmail] = useState("");
   const [leadStatus, setLeadStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [leadError, setLeadError] = useState<string>("");
+  const [howOpen, setHowOpen] = useState(false);
   const [tagScores, setTagScores] = useState<TagScores>(() => loadTagScores());
   const swipedRef = useRef<Set<string>>(new Set());
   const refineLockRef = useRef(false);
@@ -280,6 +282,11 @@ const App: React.FC = () => {
     if (!currentProduct) return;
 
     void Firestore.saveSwipe({ productId: currentProduct.id, direction: "right", action });
+    void Firestore.logEvent({
+      type: action === "wishlist" ? "wishlist_add" : "cart_add",
+      productId: currentProduct.id,
+      source: "style_match_modal",
+    }).catch(console.warn);
     bumpTags(currentProduct, +2);
     swipedRef.current.add(currentProduct.id);
 
@@ -733,6 +740,13 @@ const App: React.FC = () => {
             </div>
 
             <div className="mt-auto pt-8">
+              <button
+                onClick={() => setHowOpen(true)}
+                className="w-full py-3 rounded-2xl bg-slate-100 text-slate-900 font-black mb-4"
+              >
+                How it works
+              </button>
+
               <button 
                 onClick={handleResetData}
                 className="w-full py-5 bg-rose-50 text-rose-500 border border-rose-100 rounded-[2rem] font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors"
@@ -788,14 +802,35 @@ const App: React.FC = () => {
                               <div className="flex justify-between items-center mt-1">
                                 <span className="font-bold text-slate-500 text-xs">${item.price}</span>
                                 <div className="flex gap-3">
-                                  <button onClick={() => {
-                                    const itemToMove = userPrefs.wishlist[idx];
-                                    setUserPrefs(prev => ({
-                                      ...prev,
-                                      wishlist: prev.wishlist.filter((_, i) => i !== idx),
-                                      cart: [...prev.cart, itemToMove]
-                                    }));
-                                  }} className="text-indigo-600 font-black text-[10px] uppercase tracking-widest hover:underline">Move to Bag</button>
+                                  <button
+                                    onClick={() => {
+                                      const itemToMove = userPrefs.wishlist[idx];
+                                      if (!itemToMove) return;
+
+                                      // update local state
+                                      setUserPrefs((prev) => ({
+                                        ...prev,
+                                        wishlist: prev.wishlist.filter((_, i) => i !== idx),
+                                        cart: [...prev.cart, itemToMove],
+                                      }));
+
+                                      // persist + analytics (fire-and-forget)
+                                      void Firestore.saveSwipe({
+                                        productId: itemToMove.id,
+                                        direction: "right",
+                                        action: "cart",
+                                      }).catch(console.error);
+
+                                      void Firestore.logEvent({
+                                        type: "cart_add",
+                                        productId: itemToMove.id,
+                                        source: "bag_move_to_cart",
+                                      }).catch(console.warn);
+                                    }}
+                                    className="text-indigo-600 font-black text-[10px] uppercase tracking-widest hover:underline"
+                                  >
+                                    Move to Bag
+                                  </button>
                                   <button onClick={() => setUserPrefs(prev => ({...prev, wishlist: prev.wishlist.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-rose-500 transition-colors"><X className="w-3 h-3" /></button>
                                 </div>
                               </div>
@@ -848,6 +883,8 @@ const App: React.FC = () => {
         leadError={leadError}
         onSubmitLead={submitLead}
       />
+
+      <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
 
       {/* Modern Navigation Bar */}
       <nav className="shrink-0 sticky bottom-0 relative bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[55]">

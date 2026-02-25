@@ -22,27 +22,24 @@ function buildAmazonSearchUrl(p: Product) {
   return `https://www.amazon.ca/s?k=${q}`;
 }
 
-function getPurchaseUrl(p: any): string {
-  // Use purchaseUrl if present, otherwise fallback to Amazon search
-  const url = typeof p?.purchaseUrl === "string" && p.purchaseUrl.trim().length > 0 ? p.purchaseUrl.trim() : "";
-  return url || buildAmazonSearchUrl(p);
+function getPurchaseUrl(p: Product): string {
+  const url = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
+  return url.length > 0 ? url : buildAmazonSearchUrl(p);
 }
 
 function openInNewTab(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-async function handleBuy(product: any) {
+function handleBuy(product: Product) {
   const url = getPurchaseUrl(product);
   if (!url) return;
 
-  try {
-    await logBuyClick({ productId: product.id, purchaseUrl: url, source: "checkout_modal" });
-  } catch (e) {
-    console.warn("logBuyClick failed", e);
-  }
-
   openInNewTab(url);
+
+  logBuyClick({ productId: product.id, purchaseUrl: url, source: "checkout_modal" }).catch((e) => {
+    console.warn("logBuyClick failed", e);
+  });
 }
 
 const CheckoutLinksModal: React.FC<Props> = ({
