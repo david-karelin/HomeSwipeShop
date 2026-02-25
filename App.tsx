@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Product, UserPreferences, AppState, UserPersona } from './types';
 import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
+import CheckoutLinksModal from './components/CheckoutLinksModal';
 import { 
   Search, 
   ShoppingBag, 
@@ -323,12 +324,6 @@ const App: React.FC = () => {
       setLeadError("Couldn’t save right now. Try again.");
     }
   };
-
-  const share = async () => {
-    await navigator.clipboard.writeText(window.location.href);
-    alert("Link copied ✅");
-  };
-
 
   const refineRecommendations = async () => {
     if (refineLockRef.current) return;
@@ -822,9 +817,9 @@ const App: React.FC = () => {
                </div>
                <button
                  onClick={() => {
-                   setLeadStatus("idle");
                    setLeadEmail("");
                    setLeadError("");
+                   setLeadStatus("idle");
                    setShowCheckout(true);
                  }}
                  className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
@@ -837,90 +832,18 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {showCheckout && (
-        <div
-          className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-end justify-center p-4"
-          onClick={() => setShowCheckout(false)}
-        >
-          <div
-            className="w-full max-w-md bg-white rounded-[2.5rem] p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-2xl font-black text-slate-900">Checkout is coming soon</h3>
-                <p className="text-slate-500 text-sm mt-1">
-                  Want early access? Drop your email and I’ll notify you.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowCheckout(false)}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200"
-              >
-                <X className="w-5 h-5 text-slate-600" />
-              </button>
-            </div>
-
-            <div className="bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
-              <div className="flex justify-between text-sm font-bold">
-                <span className="text-slate-500">Subtotal</span>
-                <span className="text-slate-900">${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs mt-2 text-slate-500">
-                <span>Bag items: {userPrefs.cart.length}</span>
-                <span>Saved: {userPrefs.wishlist.length}</span>
-              </div>
-            </div>
-
-            {leadStatus === "saved" ? (
-              <div className="text-center py-6">
-                <div className="text-emerald-600 font-black text-lg">You’re on the list ✅</div>
-                <p className="text-slate-500 text-sm mt-1">Thanks! I’ll email you when checkout is live.</p>
-                <button
-                  onClick={() => setShowCheckout(false)}
-                  className="mt-5 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700"
-                >
-                  Back to browsing
-                </button>
-                <button
-                  onClick={share}
-                  className="mt-3 w-full py-4 bg-slate-100 text-slate-700 rounded-2xl font-bold hover:bg-slate-200"
-                >
-                  Share this app
-                </button>
-              </div>
-            ) : (
-              <>
-                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                  Email
-                </label>
-                <input
-                  value={leadEmail}
-                  onChange={(e) => setLeadEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-
-                {leadError && (
-                  <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>
-                )}
-
-                <button
-                  onClick={submitLead}
-                  disabled={leadStatus === "saving"}
-                  className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 disabled:opacity-60"
-                >
-                  {leadStatus === "saving" ? "Saving..." : "Notify me"}
-                </button>
-
-                <p className="text-[11px] text-slate-400 mt-3">
-                  We’ll only use this to contact you about checkout. No spam.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <CheckoutLinksModal
+        open={showCheckout}
+        onClose={() => setShowCheckout(false)}
+        cart={userPrefs.cart}
+        wishlist={userPrefs.wishlist}
+        subtotal={userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0)}
+        leadEmail={leadEmail}
+        setLeadEmail={setLeadEmail}
+        leadStatus={leadStatus}
+        leadError={leadError}
+        onSubmitLead={submitLead}
+      />
 
       {/* Modern Navigation Bar */}
       <nav className="bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[55]">

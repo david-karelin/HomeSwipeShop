@@ -164,20 +164,10 @@ export async function saveLead(payload: {
 }) {
   const user = await ensureUser();
 
-  const email = payload.email.trim().toLowerCase();
-  const leadId = email.replace(/[^a-z0-9]/g, "_");
-
+  const id = payload.email.trim().toLowerCase();
   await setDoc(
-    doc(collection(db, "leads"), leadId),
-    {
-      uid: user.uid,
-      email,
-      subtotal: Number(payload.subtotal || 0),
-      bagCount: Number(payload.bagCount || 0),
-      wishlistCount: Number(payload.wishlistCount || 0),
-      createdAt: serverTimestamp(),
-      source: "checkout_modal",
-    },
+    doc(db, "leads", id),
+    { uid: user.uid, ...payload, createdAt: serverTimestamp(), source: "checkout_modal" },
     { merge: true }
   );
 }

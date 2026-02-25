@@ -30,3 +30,4 @@ dist-ssr
 
 # firebase admin key
 scripts/serviceAccountKey.json
+leads.csv

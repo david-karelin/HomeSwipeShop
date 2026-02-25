@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "preview:host": "vite preview --host 0.0.0.0",
     "seed": "tsx scripts/seedAdmin.ts",
-    "seed:products": "tsx scripts/seedProducts.ts"
+    "seed:products": "tsx scripts/seedProducts.ts",
+    "export:leads": "tsx scripts/exportLeads.ts",
+    "backfill:checkout": "tsx scripts/backfillCheckoutFields.ts"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
