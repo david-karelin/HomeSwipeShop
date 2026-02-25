@@ -1,9 +1,15 @@
 import admin from "firebase-admin";
+import fs from "node:fs";
+import path from "node:path";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+
+// Load service account key (DO NOT COMMIT THIS FILE)
+const keyPath = path.join(process.cwd(), "scripts", "serviceAccountKey.json");
+const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
@@ -45,15 +51,13 @@ async function main() {
     const asinRaw = typeof data.asin === "string" ? data.asin : "";
     const asin = asinRaw.trim().toUpperCase();
 
-    const query = [name, brand, category].filter(Boolean).join(" ");
+    const queryStr = [name, brand, category].filter(Boolean).join(" ");
     const existing = typeof data.purchaseUrl === "string" ? data.purchaseUrl.trim() : "";
 
     const purchaseUrl =
-      existing.length > 0
-        ? existing
-        : isAsin(asin)
-          ? amazonAsinUrl(asin)
-          : amazonSearchUrl(query || "home decor");
+      isAsin(asin)
+        ? amazonAsinUrl(asin)
+        : (existing.length > 0 ? existing : amazonSearchUrl(queryStr || "home decor"));
 
     batch.set(
       doc.ref,

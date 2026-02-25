@@ -25,19 +25,17 @@ function buildAmazonSearchUrl(p: Product) {
 }
 
 function buildAmazonAsinUrl(asin: string) {
-  const clean = asin.trim();
-  const base = `https://www.amazon.ca/dp/${clean}/ref=nosim`;
+  const a = asin.trim().toUpperCase();
+  const base = `https://www.amazon.ca/dp/${a}/ref=nosim`;
   return AMAZON_TAG ? `${base}?tag=${encodeURIComponent(AMAZON_TAG)}` : base;
 }
 
 function getPurchaseUrl(p: Product): string {
-  const direct = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
-  if (direct) return direct;
+  const asin = (p.asin || "").trim();
+  if (asin.length === 10) return buildAmazonAsinUrl(asin);
 
-  const asin = typeof p.asin === "string" ? p.asin.trim() : "";
-  if (asin) return buildAmazonAsinUrl(asin);
-
-  return buildAmazonSearchUrl(p);
+  const url = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
+  return url || buildAmazonSearchUrl(p);
 }
 
 function openInNewTab(url: string) {
