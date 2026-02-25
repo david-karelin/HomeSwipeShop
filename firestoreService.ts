@@ -11,6 +11,7 @@ import {
   type DocumentData,
   doc,
   setDoc,
+  addDoc,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 import { auth, db } from "./firebase";
@@ -170,5 +171,22 @@ export async function saveLead(payload: {
     { uid: user.uid, ...payload, createdAt: serverTimestamp(), source: "checkout_modal" },
     { merge: true }
   );
+}
+
+export async function logBuyClick(payload: {
+  productId: string;
+  purchaseUrl: string;
+  source?: string;
+}) {
+  const user = await ensureUser();
+
+  await addDoc(collection(db, "events"), {
+    type: "buy_click",
+    uid: user.uid,
+    productId: payload.productId,
+    purchaseUrl: payload.purchaseUrl,
+    source: payload.source ?? "checkout_modal",
+    createdAt: serverTimestamp(),
+  });
 }
 

@@ -12,7 +12,9 @@
     "seed": "tsx scripts/seedAdmin.ts",
     "seed:products": "tsx scripts/seedProducts.ts",
     "export:leads": "tsx scripts/exportLeads.ts",
-    "backfill:checkout": "tsx scripts/backfillCheckoutFields.ts"
+    "backfill:checkout": "tsx scripts/backfillCheckoutFields.ts",
+    "bulk:affiliate": "tsx scripts/bulkSetAffiliate.ts",
+    "bulk:affiliate:dry": "tsx scripts/bulkSetAffiliate.ts --dry-run"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

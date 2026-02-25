@@ -493,10 +493,11 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex justify-center sm:py-8">
-      <div className="w-full sm:max-w-md sm:rounded-[2.5rem] sm:shadow-2xl sm:border sm:border-slate-100 overflow-hidden bg-slate-50">
+    <div className="min-h-[100dvh] bg-slate-100 flex items-center justify-center p-0 sm:p-6">
+      <div className="w-full max-w-md h-[100dvh] sm:h-[min(100dvh,900px)] rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200 bg-slate-50">
+      <div className="h-full flex flex-col">
       {/* Header */}
-      <header className="px-6 py-5 bg-white/90 backdrop-blur-xl sticky top-0 z-50 flex justify-between items-center border-b border-slate-100">
+      <header className="shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl z-50 flex justify-between items-center border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -528,51 +529,53 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-grow flex items-center justify-center p-6 relative overflow-hidden">
+      <main className="flex-1 relative overflow-hidden">
         {view === 'browsing' && (
-          currentIndex < products.length ? (
-            <div className="w-full flex flex-col items-center">
-               <SwipeCard 
-                key={products[currentIndex].id}
-                product={products[currentIndex]} 
-                onSwipe={handleSwipe}
-                onSelectAction={handleAction}
-                onTap={() => setSelectedProduct(products[currentIndex])}
-              />
-              <div className="mt-6 flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white px-4 py-2 rounded-full shadow-sm">
-                <Sparkles className="w-3 h-3 text-emerald-500" />
-                Match: {matchPercent(products[currentIndex])}%
+          <div className="absolute inset-0 p-6 flex items-center justify-center">
+            {currentIndex < products.length ? (
+              <div className="w-full flex flex-col items-center">
+                 <SwipeCard 
+                  key={products[currentIndex].id}
+                  product={products[currentIndex]} 
+                  onSwipe={handleSwipe}
+                  onSelectAction={handleAction}
+                  onTap={() => setSelectedProduct(products[currentIndex])}
+                />
+                <div className="mt-6 flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white px-4 py-2 rounded-full shadow-sm">
+                  <Sparkles className="w-3 h-3 text-emerald-500" />
+                  Match: {matchPercent(products[currentIndex])}%
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="text-center p-10 bg-white rounded-[3rem] shadow-xl border border-slate-100 max-w-[280px] animate-in fade-in zoom-in">
-              <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                {hasMore && isAlgorithmRunning ? (
-                  <Loader2 className="w-10 h-10 text-indigo-300 animate-spin" />
-                ) : (
-                  <History className="w-10 h-10 text-indigo-300" />
+            ) : (
+              <div className="text-center p-10 bg-white rounded-[3rem] shadow-xl border border-slate-100 max-w-[280px] animate-in fade-in zoom-in">
+                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                  {hasMore && isAlgorithmRunning ? (
+                    <Loader2 className="w-10 h-10 text-indigo-300 animate-spin" />
+                  ) : (
+                    <History className="w-10 h-10 text-indigo-300" />
+                  )}
+                </div>
+                <h3 className="text-xl font-black text-slate-900 mb-2">
+                  {hasMore ? (isAlgorithmRunning ? "Loading more..." : "Finding more...") : "No more products"}
+                </h3>
+
+                <p className="text-slate-500 text-sm mb-8">
+                  {hasMore
+                    ? "Generating new products based on your latest matches..."
+                    : "You’ve reached the end of the catalog for these interests. Try selecting more interests or reseed more products."}
+                </p>
+
+                {!hasMore && (
+                  <button
+                    onClick={() => setView("interests")}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors"
+                  >
+                    Choose More Interests
+                  </button>
                 )}
               </div>
-              <h3 className="text-xl font-black text-slate-900 mb-2">
-                {hasMore ? (isAlgorithmRunning ? "Loading more..." : "Finding more...") : "No more products"}
-              </h3>
-
-              <p className="text-slate-500 text-sm mb-8">
-                {hasMore
-                  ? "Generating new products based on your latest matches..."
-                  : "You’ve reached the end of the catalog for these interests. Try selecting more interests or reseed more products."}
-              </p>
-
-              {!hasMore && (
-                <button
-                  onClick={() => setView("interests")}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors"
-                >
-                  Choose More Interests
-                </button>
-              )}
-            </div>
-          )
+            )}
+          </div>
         )}
 
         {/* Product Details Modal Overlay */}
@@ -847,7 +850,7 @@ const App: React.FC = () => {
       />
 
       {/* Modern Navigation Bar */}
-      <nav className="bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[55]">
+      <nav className="shrink-0 sticky bottom-0 relative bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[55]">
         <button onClick={() => setView('browsing')} className={`flex flex-col items-center gap-1 transition-all ${view === 'browsing' ? 'text-indigo-600 scale-110' : 'text-slate-300'}`}>
           <Compass className="w-6 h-6" />
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Explore</span>
@@ -866,6 +869,7 @@ const App: React.FC = () => {
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Bag</span>
         </button>
       </nav>
+      </div>
       </div>
     </div>
   );
