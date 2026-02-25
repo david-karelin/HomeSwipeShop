@@ -493,7 +493,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col max-w-md mx-auto relative overflow-hidden border-x border-slate-100">
+    <div className="min-h-screen bg-slate-50 flex justify-center sm:py-8">
+      <div className="w-full sm:max-w-md sm:rounded-[2.5rem] sm:shadow-2xl sm:border sm:border-slate-100 overflow-hidden bg-slate-50">
       {/* Header */}
       <header className="px-6 py-5 bg-white/90 backdrop-blur-xl sticky top-0 z-50 flex justify-between items-center border-b border-slate-100">
         <div className="flex items-center gap-3">
@@ -865,6 +866,7 @@ const App: React.FC = () => {
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Bag</span>
         </button>
       </nav>
+      </div>
     </div>
   );
 };
