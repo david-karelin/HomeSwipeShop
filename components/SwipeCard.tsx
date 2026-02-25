@@ -108,7 +108,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({ product, onSwipe, onSelectAction,
             className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-emerald-50 border border-slate-100 rounded-3xl transition-all group"
           >
             <ShoppingCart className="w-8 h-8 text-slate-400 group-hover:text-emerald-500 mb-2 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-emerald-600">Buy Now</span>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-emerald-600">Add to Bag</span>
           </button>
         </div>
       </div>
