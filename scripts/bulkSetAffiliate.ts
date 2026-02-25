@@ -8,10 +8,22 @@ if (!admin.apps.length) {
 }
 
 const db = getFirestore();
+const TAG = process.env.AMAZON_ASSOC_TAG || process.env.VITE_AMAZON_ASSOC_TAG || "";
 
 function amazonSearchUrl(query: string) {
   const q = encodeURIComponent(query.trim().replace(/\s+/g, " "));
-  return `https://www.amazon.ca/s?k=${q}`;
+  const base = `https://www.amazon.ca/s?k=${q}`;
+  return TAG ? `${base}&tag=${encodeURIComponent(TAG)}` : base;
+}
+
+function isAsin(x: string) {
+  return /^[A-Z0-9]{10}$/i.test(x.trim());
+}
+
+function amazonAsinUrl(asin: string) {
+  const a = asin.trim();
+  const base = `https://www.amazon.ca/dp/${a}/ref=nosim`;
+  return TAG ? `${base}?tag=${encodeURIComponent(TAG)}` : base;
 }
 
 async function main() {
@@ -30,9 +42,18 @@ async function main() {
     const name = String(data.name ?? data.title ?? "").trim();
     const brand = String(data.brand ?? "").trim();
     const category = String(data.category ?? "").trim();
+    const asinRaw = typeof data.asin === "string" ? data.asin : "";
+    const asin = asinRaw.trim().toUpperCase();
 
     const query = [name, brand, category].filter(Boolean).join(" ");
-    const purchaseUrl = amazonSearchUrl(query || "home decor");
+    const existing = typeof data.purchaseUrl === "string" ? data.purchaseUrl.trim() : "";
+
+    const purchaseUrl =
+      existing.length > 0
+        ? existing
+        : isAsin(asin)
+          ? amazonAsinUrl(asin)
+          : amazonSearchUrl(query || "home decor");
 
     batch.set(
       doc.ref,

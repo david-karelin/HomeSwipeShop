@@ -14,6 +14,9 @@ export interface Product {
   checkoutType?: "affiliate" | "stripe";
   merchant?: string;
   purchaseUrl?: string;
+
+  // Amazon product ID (10 chars)
+  asin?: string;
 }
 
 export interface UserPersona {

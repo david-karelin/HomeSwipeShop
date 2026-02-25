@@ -2,6 +2,8 @@ import React, { useEffect } from "react";
 import type { Product } from "../types";
 import { logBuyClick } from "../firestoreService";
 
+const AMAZON_TAG = import.meta.env.VITE_AMAZON_ASSOC_TAG || "";
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -22,9 +24,20 @@ function buildAmazonSearchUrl(p: Product) {
   return `https://www.amazon.ca/s?k=${q}`;
 }
 
+function buildAmazonAsinUrl(asin: string) {
+  const clean = asin.trim();
+  const base = `https://www.amazon.ca/dp/${clean}/ref=nosim`;
+  return AMAZON_TAG ? `${base}?tag=${encodeURIComponent(AMAZON_TAG)}` : base;
+}
+
 function getPurchaseUrl(p: Product): string {
-  const url = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
-  return url.length > 0 ? url : buildAmazonSearchUrl(p);
+  const direct = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
+  if (direct) return direct;
+
+  const asin = typeof p.asin === "string" ? p.asin.trim() : "";
+  if (asin) return buildAmazonAsinUrl(asin);
+
+  return buildAmazonSearchUrl(p);
 }
 
 function openInNewTab(url: string) {

@@ -39,6 +39,7 @@ function normalizeProduct(id: string, data: any): Product {
     checkoutType: data.checkoutType,
     merchant: data.merchant,
     purchaseUrl: data.purchaseUrl,
+    asin: data.asin,
   };
 }
 
