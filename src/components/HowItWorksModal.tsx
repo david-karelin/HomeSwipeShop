@@ -15,7 +15,7 @@ export default function HowItWorksModal({ open, onClose }: Props) {
       <div className="w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col rounded-2xl bg-white shadow-2xl">
         <div className="shrink-0 p-4 border-b border-slate-100 flex items-start justify-between gap-4">
           <div>
-            <div className="text-2xl font-black text-slate-900">How SwipeShop works</div>
+            <div className="text-2xl font-black text-slate-900">How Seligo.AI works</div>
             <div className="text-slate-500 text-sm mt-1">A quick 30-second overview.</div>
           </div>
           <button
@@ -45,7 +45,7 @@ export default function HowItWorksModal({ open, onClose }: Props) {
           <div className="rounded-2xl border border-slate-100 p-4">
             <div className="font-black text-slate-900">3) Checkout links</div>
             <div className="text-sm text-slate-600 mt-1">
-              For now, “Buy” opens affiliate product pages (real in-app checkout is coming later).
+              For now, “Open” launches affiliate product pages (real in-app checkout is coming later).
             </div>
           </div>
 

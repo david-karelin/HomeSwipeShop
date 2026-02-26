@@ -132,12 +132,12 @@ const CheckoutLinksModal: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="font-black text-slate-900 truncate">{p.name}</div>
                     <div className="text-xs text-slate-500 truncate">
-                      {p.brand ?? "SwipeShop"} • ${Number(p.price ?? 0).toFixed(2)}
+                      {p.brand ?? "Seligo.AI"} • ${Number(p.price ?? 0).toFixed(2)}
                     </div>
                   </div>
                   <button
                     onClick={() => handleBuy(p)}
-                    className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 text-white font-black text-xs uppercase tracking-widest hover:bg-indigo-700 active:scale-95 transition"
+                    className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition"
                   >
                     Open on Amazon
                   </button>
@@ -207,7 +207,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
                   value={leadEmail}
                   onChange={(e) => setLeadEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="mt-4 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="mt-4 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
                 />
 
                 {leadError && (
@@ -217,7 +217,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
                 <button
                   onClick={onSubmitLead}
                   disabled={leadStatus === "saving"}
-                  className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 disabled:opacity-60"
+                  className="mt-4 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
                 >
                   {leadStatus === "saving" ? "Saving..." : "Notify me"}
                 </button>

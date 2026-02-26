@@ -1,5 +1,5 @@
 import * as Firestore from "./firestoreService";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Product, UserPreferences, AppState, UserPersona } from './types';
 import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
@@ -70,6 +70,70 @@ type UndoEntry = {
   action: "wishlist" | "cart" | null;
 };
 
+type LocalActivityKind = "match" | "pass" | "save" | "bag";
+type LocalActivity = { ts: number; kind: LocalActivityKind };
+
+const ACTIVITY_KEY = "seligo_activity_v1";
+
+const dayKey = (ts: number) => {
+  const d = new Date(ts);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const loadActivity = (): LocalActivity[] => {
+  try {
+    const raw = localStorage.getItem(ACTIVITY_KEY);
+    const arr = raw ? (JSON.parse(raw) as LocalActivity[]) : [];
+    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveActivity = (items: LocalActivity[]) => {
+  localStorage.setItem(ACTIVITY_KEY, JSON.stringify(items.slice(-500)));
+};
+
+const computeStreak = (items: LocalActivity[]) => {
+  const days = new Set(items.map((e) => dayKey(e.ts)));
+  const today = dayKey(Date.now());
+
+  let streak = 0;
+  for (let i = 0; i < 3650; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = dayKey(d.getTime());
+    if (days.has(k)) streak++;
+    else break;
+  }
+
+  const todayItems = items.filter((e) => dayKey(e.ts) === today);
+  const matchesToday = todayItems.filter((e) => e.kind === "match").length;
+  const passesToday = todayItems.filter((e) => e.kind === "pass").length;
+  const savesToday = todayItems.filter((e) => e.kind === "save" || e.kind === "bag").length;
+
+  return { streak, matchesToday, passesToday, savesToday };
+};
+
+const BLOCKED_TAGS_KEY = "seligo_blocked_tags_v1";
+
+const loadBlockedTags = (): string[] => {
+  try {
+    const raw = localStorage.getItem(BLOCKED_TAGS_KEY);
+    const arr = raw ? (JSON.parse(raw) as string[]) : [];
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveBlockedTags = (tags: string[]) => {
+  localStorage.setItem(BLOCKED_TAGS_KEY, JSON.stringify(tags));
+};
+
 const loadTagScores = (): TagScores => {
   try { return JSON.parse(localStorage.getItem("tagScores") || "{}"); }
   catch { return {}; }
@@ -119,10 +183,48 @@ const App: React.FC = () => {
   const [leadError, setLeadError] = useState<string>("");
   const [howOpen, setHowOpen] = useState(false);
   const [tagScores, setTagScores] = useState<TagScores>(() => loadTagScores());
+  const [activityLog, setActivityLog] = useState<LocalActivity[]>(() => loadActivity());
+  const [blockedTags, setBlockedTags] = useState<string[]>(() => loadBlockedTags());
   const [undoCount, setUndoCount] = useState(0);
   const swipedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
   const refineLockRef = useRef(false);
+  const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
+
+  const logLocalActivity = (kind: LocalActivityKind) => {
+    setActivityLog((prev) => {
+      const next = [...prev, { ts: Date.now(), kind }];
+      saveActivity(next);
+      return next;
+    });
+  };
+
+  const toggleBlockedTag = (tag: string) => {
+    const t = String(tag || "").trim();
+    if (!t) return;
+
+    setBlockedTags((prev) => {
+      const set = new Set(prev);
+      if (set.has(t)) set.delete(t);
+      else set.add(t);
+      const next = Array.from(set).filter((x): x is string => typeof x === "string");
+      saveBlockedTags(next);
+      return next;
+    });
+  };
+
+  const clearBlockedTags = () => {
+    setBlockedTags([]);
+    saveBlockedTags([]);
+  };
+
+  const isBlockedProduct = (p: Product) => {
+    const tags = p.tags || [];
+    for (const t of tags) if (blockedSet.has(t)) return true;
+    return false;
+  };
+
+  const { streak, matchesToday, passesToday, savesToday } = computeStreak(activityLog);
 
   function pushUndo(entry: UndoEntry) {
     undoRef.current.push(entry);
@@ -207,6 +309,10 @@ const App: React.FC = () => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    setSelectedProduct(null);
+  }, [view]);
 
   // Persistence Sync
   useEffect(() => {
@@ -321,7 +427,7 @@ const App: React.FC = () => {
         more = page.hasMore;
 
         for (const p of page.items) {
-          if (!swipedRef.current.has(p.id)) out.push(p);
+          if (!swipedRef.current.has(p.id) && !isBlockedProduct(p)) out.push(p);
           if (out.length >= 80) break;
         }
 
@@ -363,6 +469,7 @@ const App: React.FC = () => {
       bumpTags(currentProduct, -1);
       swipedRef.current.add(currentProduct.id);
       pushUndo({ product: currentProduct, direction: "left", action: null });
+      logLocalActivity("pass");
       setCurrentIndex(i => i + 1);
       return;
     }
@@ -392,6 +499,8 @@ const App: React.FC = () => {
       lastAction: action
     }));
 
+    logLocalActivity("match");
+    logLocalActivity(action === "wishlist" ? "save" : "bag");
     pushUndo({ product: currentProduct, direction: "right", action });
     setCurrentIndex(prev => prev + 1);
     setSelectedProduct(null);
@@ -426,6 +535,12 @@ const App: React.FC = () => {
     }
   };
 
+  const shareLink = async () => {
+    const url = window.location.href;
+    await navigator.clipboard.writeText(url);
+    alert("Link copied!");
+  };
+
   const refineRecommendations = async () => {
     if (refineLockRef.current) return;
     if (!hasMore) return;
@@ -446,7 +561,9 @@ const App: React.FC = () => {
         const unique = ranked
           .filter(p => !seen.has(p.id))
           .filter(p => !swipedRef.current.has(p.id));
-        return [...prev, ...unique];
+          
+        const filtered = unique.filter(p => !isBlockedProduct(p));
+        return [...prev, ...filtered];
       });
 
       setCursor(page.cursor);
@@ -471,6 +588,7 @@ const App: React.FC = () => {
 
   const liked = topTags(tagScores, 1, 5);
   const avoided = topTags(tagScores, -1, 5);
+  const nextBestPicks = liked.slice(0, 2).join(" ");
   const topRooms = Object.entries(tagScores)
     .filter(([k, v]) => Number(v) > 0 && isRoomTag(k))
     .sort((a, b) => Number(b[1]) - Number(a[1]))
@@ -485,16 +603,16 @@ const App: React.FC = () => {
   // Views
   if (view === 'auth') {
     return (
-      <div className="min-h-screen bg-indigo-600 flex flex-col items-center justify-center p-6 text-white">
+      <div className="min-h-screen bg-[var(--seligo-primary)] flex flex-col items-center justify-center p-6 text-white">
         <div className="mb-12 text-center animate-in fade-in zoom-in duration-500">
           <div className="w-24 h-24 bg-white/20 backdrop-blur-xl rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20">
             <ShoppingBag className="w-12 h-12" />
           </div>
-          <h1 className="text-5xl font-black mb-2 tracking-tighter">SwipeShop</h1>
-          <p className="text-indigo-100 font-medium opacity-80 text-lg italic">The AI knows your style.</p>
+          <h1 className="text-5xl font-black mb-2 tracking-tighter">Seligo.AI</h1>
+          <p className="text-sky-100 font-medium opacity-80 text-lg italic">AI-powered home discovery</p>
         </div>
         <div className="w-full max-sm:px-4 space-y-4">
-          <button onClick={handleLogin} className="w-full py-5 bg-white text-indigo-600 rounded-3xl font-black text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl">Get Started</button>
+          <button onClick={handleLogin} className="w-full py-5 bg-white text-[var(--seligo-primary)] rounded-3xl font-black text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl">Get Started</button>
         </div>
       </div>
     );
@@ -514,7 +632,7 @@ const App: React.FC = () => {
               onClick={() => handleToggleInterest(interest.id)}
               className={`p-6 rounded-[2rem] border-2 transition-all flex flex-col items-center text-center space-y-3 ${
                 userPrefs.interests.includes(interest.id)
-                  ? 'border-indigo-600 bg-white text-indigo-600 shadow-lg shadow-indigo-100'
+                  ? 'border-[var(--seligo-primary)] bg-white text-[var(--seligo-primary)] shadow-lg shadow-sky-100'
                   : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
               }`}
             >
@@ -527,7 +645,7 @@ const App: React.FC = () => {
           onClick={startDiscovery}
           disabled={userPrefs.interests.length < 1 || isLoading}
           className={`mt-4 w-full py-5 rounded-[2rem] font-bold text-lg flex items-center justify-center gap-3 transition-all ${
-            userPrefs.interests.length >= 1 ? 'bg-indigo-600 text-white shadow-2xl' : 'bg-slate-200 text-slate-400'
+            userPrefs.interests.length >= 1 ? 'bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white shadow-2xl' : 'bg-slate-200 text-slate-400'
           }`}
         >
           {isLoading ? <Loader2 className="animate-spin" /> : <>Generate My Feed <Zap className="w-5 h-5" /></>}
@@ -580,7 +698,7 @@ const App: React.FC = () => {
                const interest = MOCK_INTERESTS.find(i => i.id === interestId);
                return (
                  <div key={interestId} className={`px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 animate-in fade-in slide-in-from-bottom duration-500`} style={{ animationDelay: `${idx * 200}ms` }}>
-                    <Activity className="w-3 h-3 text-emerald-500" /> {interest?.label}
+                    <Activity className="w-3 h-3 text-[var(--seligo-accent)]" /> {interest?.label}
                  </div>
                )
              })}
@@ -599,21 +717,21 @@ const App: React.FC = () => {
       <div className="w-full max-w-md h-[100dvh] sm:h-[min(100dvh,900px)] rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200 bg-slate-50">
       <div className="h-full flex flex-col">
       {/* Header */}
-      <header className="shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl z-50 flex justify-between items-center border-b border-slate-100">
+      <header className="shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl z-[250] flex justify-between items-center border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+            <div className="w-10 h-10 bg-[var(--seligo-primary)] rounded-xl flex items-center justify-center shadow-lg shadow-sky-200">
               <ShoppingBag className="w-5 h-5 text-white" />
             </div>
             {isAlgorithmRunning && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center animate-pulse border-2 border-white">
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--seligo-accent)] rounded-full flex items-center justify-center animate-pulse border-2 border-white">
                 <BrainCircuit className="w-2 h-2 text-white" />
               </div>
             )}
           </div>
           <div>
-            <span className="block font-black text-lg leading-tight text-slate-900">SwipeShop</span>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-emerald-500">
+            <span className="block font-black text-lg leading-tight text-slate-900">Seligo.AI</span>
+            <span className="block text-[10px] font-bold uppercase tracking-widest text-[var(--seligo-accent)]">
               {isAlgorithmRunning ? 'Algorithm Refining...' : 'ML Active'}
             </span>
           </div>
@@ -628,10 +746,10 @@ const App: React.FC = () => {
           >
             <RotateCcw className="w-5 h-5" />
           </button>
-          <button onClick={() => setView('cart')} className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 relative hover:text-indigo-600 transition-colors">
+          <button onClick={() => setView('cart')} className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 relative hover:text-[var(--seligo-primary)] transition-colors">
             <ShoppingBag className="w-5 h-5" />
             {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[10px] flex items-center justify-center rounded-full font-bold border-2 border-white">
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-[var(--seligo-primary)] text-white text-[10px] flex items-center justify-center rounded-full font-bold border-2 border-white">
                 {userPrefs.cart.length + userPrefs.wishlist.length}
               </span>
             )}
@@ -653,14 +771,14 @@ const App: React.FC = () => {
                   onTap={() => setSelectedProduct(products[currentIndex])}
                 />
                 <div className="mt-6 flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white px-4 py-2 rounded-full shadow-sm">
-                  <Sparkles className="w-3 h-3 text-emerald-500" />
+                  <Sparkles className="w-3 h-3 text-[var(--seligo-accent)]" />
                   Match: {matchPercent(products[currentIndex])}%
                 </div>
               </div>
             ) : (
               <div className="text-center p-10 bg-white rounded-[3rem] shadow-xl border border-slate-100 max-w-[280px] animate-in fade-in zoom-in">
-                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <History className="w-10 h-10 text-indigo-300" />
+                <div className="w-20 h-20 bg-sky-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <History className="w-10 h-10 text-sky-300" />
                 </div>
                 <h3 className="text-xl font-black text-slate-900 mb-2">No more items</h3>
 
@@ -671,7 +789,7 @@ const App: React.FC = () => {
                 <div className="space-y-3">
                   <button
                     onClick={() => setView("interests")}
-                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors"
+                    className="w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-bold shadow-lg transition-colors"
                   >
                     Change interests
                   </button>
@@ -695,7 +813,7 @@ const App: React.FC = () => {
               <button 
                 type="button"
                 onClick={() => setSelectedProduct(null)} 
-                className="absolute top-6 left-6 z-50 pointer-events-auto p-3 bg-white/20 backdrop-blur-xl rounded-2xl border border-white/20 text-white hover:bg-white/40 transition-all"
+                className="absolute top-6 left-6 z-[260] pointer-events-auto p-3 rounded-2xl bg-[var(--seligo-cta)] text-white shadow-xl ring-1 ring-white/30 hover:bg-[#fb8b3a] active:scale-95 transition"
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
@@ -706,10 +824,10 @@ const App: React.FC = () => {
               <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 border border-slate-50">
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 mb-1 block">{selectedProduct.brand}</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--seligo-primary)] mb-1 block">{selectedProduct.brand}</span>
                     <h2 className="text-3xl font-black text-slate-900 leading-tight">{selectedProduct.name}</h2>
                   </div>
-                  <div className="text-3xl font-black text-emerald-500">${selectedProduct.price}</div>
+                  <div className="text-3xl font-black text-[var(--seligo-accent)]">${selectedProduct.price}</div>
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-8">
@@ -728,14 +846,14 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <button 
                     onClick={() => handleAction('wishlist')}
-                    className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-indigo-50 transition-all group"
+                    className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-sky-50 transition-all group"
                   >
-                    <Bookmark className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 mb-2" />
+                    <Bookmark className="w-8 h-8 text-slate-400 group-hover:text-[var(--seligo-primary)] mb-2" />
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Save Item</span>
                   </button>
                   <button 
                     onClick={() => handleAction('cart')}
-                    className="flex flex-col items-center justify-center p-6 bg-indigo-600 rounded-3xl border border-indigo-400 shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all group"
+                    className="flex flex-col items-center justify-center p-6 bg-[var(--seligo-cta)] rounded-3xl border border-orange-400 shadow-xl hover:bg-[#fb8b3a] transition-all group"
                   >
                     <ShoppingCart className="w-8 h-8 text-white mb-2" />
                     <span className="text-[10px] font-black uppercase tracking-widest text-white">Add to Bag</span>
@@ -748,65 +866,143 @@ const App: React.FC = () => {
 
         {view === 'profile' && (
           <div className="absolute inset-0 bg-white z-[60] flex flex-col p-6 overflow-y-auto no-scrollbar animate-in slide-in-from-right duration-300">
+            {/* Top bar */}
             <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black text-slate-900">Your Insights</h2>
-              <button onClick={() => setView('browsing')} className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"><X className="w-6 h-6 text-slate-600" /></button>
+              <div>
+                <h2 className="text-3xl font-black text-slate-900">Insights</h2>
+                <div className="text-slate-500 text-sm mt-1">Your Seligo.AI style profile</div>
+              </div>
+
+              <button
+                onClick={() => setView('browsing')}
+                className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-6 h-6 text-slate-600" />
+              </button>
             </div>
 
-            <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-indigo-200 mb-8">
+            {/* Vibe card */}
+            <div className="bg-[var(--seligo-primary)] rounded-[2.5rem] p-8 text-white shadow-2xl shadow-sky-200 mb-6">
               <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
                   <BrainCircuit className="w-8 h-8" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-indigo-200">Detected Vibe</h3>
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-white/80">Detected vibe</h3>
                   <p className="text-2xl font-black">{userPrefs.persona.detectedVibe}</p>
                 </div>
               </div>
+
               <div className="space-y-4">
                 <div className="flex flex-wrap gap-2">
-                  {userPrefs.persona.styleKeywords.map(k => (
-                    <span key={k} className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold border border-white/20">{k}</span>
+                  {userPrefs.persona.styleKeywords.slice(0, 6).map((k) => (
+                    <span
+                      key={k}
+                      className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold border border-white/20"
+                    >
+                      {k}
+                    </span>
                   ))}
                 </div>
+
                 <div className="pt-4 border-t border-white/10 flex justify-between items-center text-sm font-bold">
-                   <span className="text-indigo-200 uppercase tracking-widest">Price Sensitivity</span>
-                   <span className="uppercase">{userPrefs.persona.priceSensitivity}</span>
+                  <span className="text-white/80 uppercase tracking-widest">Price sensitivity</span>
+                  <span className="uppercase">{userPrefs.persona.priceSensitivity}</span>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-8">
-               <div className="bg-slate-50 rounded-3xl p-6">
-                  <Heart className="w-6 h-6 text-pink-500 mb-2" />
-                  <span className="block text-2xl font-black text-slate-900">{userPrefs.likedProducts.length}</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Matches</span>
-               </div>
-               <div className="bg-slate-50 rounded-3xl p-6">
-                  <History className="w-6 h-6 text-slate-400 mb-2" />
-                  <span className="block text-2xl font-black text-slate-900">{userPrefs.dislikedProducts.length}</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Passes</span>
-               </div>
+            <div className="mb-6 bg-slate-50 border border-slate-100 rounded-3xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">Daily streak</div>
+                  <div className="text-3xl font-black text-slate-900 mt-1">
+                    {streak} <span className="text-base font-bold text-slate-500">days</span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">Today</div>
+                  <div className="text-sm font-bold text-slate-700 mt-1">
+                    {matchesToday} matches • {passesToday} passes • {savesToday} saved
+                  </div>
+                </div>
+              </div>
             </div>
 
+            {/* Dating-app style “compatibility” row */}
+            <div className="grid grid-cols-3 gap-3 mb-8">
+              <div className="bg-slate-50 rounded-3xl p-5">
+                <Heart className="w-5 h-5 text-[var(--seligo-accent)] mb-2" />
+                <span className="block text-2xl font-black text-slate-900">{userPrefs.likedProducts.length}</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matches</span>
+              </div>
+
+              <div className="bg-slate-50 rounded-3xl p-5">
+                <History className="w-5 h-5 text-slate-400 mb-2" />
+                <span className="block text-2xl font-black text-slate-900">{userPrefs.dislikedProducts.length}</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Passes</span>
+              </div>
+
+              <div className="bg-slate-50 rounded-3xl p-5">
+                <ShoppingBag className="w-5 h-5 text-[var(--seligo-cta)] mb-2" />
+                <span className="block text-2xl font-black text-slate-900">
+                  {userPrefs.wishlist.length + userPrefs.cart.length}
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saved</span>
+              </div>
+            </div>
+
+            {/* Next picks (dating app vibe) */}
+            <div className="mb-8 bg-slate-50 border border-slate-100 rounded-3xl p-6">
+              <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Next picks</div>
+              <div className="text-slate-800 font-bold">
+                We’ll show you more of{" "}
+                <span className="text-[var(--seligo-primary)]">
+                  {liked[0] ? liked[0] : "your top styles"}
+                </span>
+                {liked[1] ? (
+                  <>
+                    {" "}and{" "}
+                    <span className="text-[var(--seligo-primary)]">{liked[1]}</span>
+                  </>
+                ) : null}
+                .
+              </div>
+              <div className="text-slate-500 text-sm mt-2">
+                Keep matching to refine your feed.
+              </div>
+            </div>
+
+            {/* Your Type */}
             <div className="mb-8">
-              <h3 className="font-black text-lg mb-4 text-slate-900">Style Keywords</h3>
+              <h3 className="font-black text-lg mb-3 text-slate-900">Your Type</h3>
               <div className="flex flex-wrap gap-2">
-                {liked.length ? liked.map(t => (
-                  <span key={t} className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold">
+                {liked.length ? liked.map((t) => (
+                  <span
+                    key={t}
+                    className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold"
+                  >
                     {t}
                   </span>
                 )) : (
-                  <span className="text-slate-400 italic text-sm">Like a few items to build your style profile.</span>
+                  <span className="text-slate-400 italic text-sm">
+                    Match a few items to build your type.
+                  </span>
                 )}
               </div>
             </div>
 
+            {/* Your Spaces */}
             <div className="mb-8">
-              <h3 className="font-black text-lg mb-4 text-slate-900">Top Rooms</h3>
+              <h3 className="font-black text-lg mb-3 text-slate-900">Your Spaces</h3>
               <div className="flex flex-wrap gap-2">
-                {topRooms.length ? topRooms.map(t => (
-                  <span key={t} className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold">
+                {topRooms.length ? topRooms.map((t) => (
+                  <span
+                    key={t}
+                    className="px-4 py-2 bg-sky-50 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
+                  >
                     {t}
                   </span>
                 )) : (
@@ -815,11 +1011,15 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="mb-8">
-              <h3 className="font-black text-lg mb-4 text-slate-900">Top Categories</h3>
+            {/* Your Categories */}
+            <div className="mb-10">
+              <h3 className="font-black text-lg mb-3 text-slate-900">Your Categories</h3>
               <div className="flex flex-wrap gap-2">
-                {topCategories.length ? topCategories.map(t => (
-                  <span key={t} className="px-4 py-2 bg-sky-50 text-sky-600 rounded-xl text-xs font-bold">
+                {topCategories.length ? topCategories.map((t) => (
+                  <span
+                    key={t}
+                    className="px-4 py-2 bg-sky-50 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
+                  >
                     {t}
                   </span>
                 )) : (
@@ -829,27 +1029,67 @@ const App: React.FC = () => {
             </div>
 
             <div className="mb-12">
-              <h3 className="font-black text-lg mb-4 text-slate-900">Avoidance Logic</h3>
-              <div className="flex flex-wrap gap-2">
-                {avoided.length ? avoided.map(t => (
-                  <span key={t} className="px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center gap-2">
-                    <X className="w-3 h-3" /> {t}
-                  </span>
-                )) : (
-                  <span className="text-slate-400 italic text-sm">Keep swiping to teach the AI what you dislike.</span>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-black text-lg text-slate-900">Dealbreakers</h3>
+
+                {blockedTags.length > 0 && (
+                  <button
+                    onClick={clearBlockedTags}
+                    className="text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-700"
+                  >
+                    Clear hidden
+                  </button>
                 )}
               </div>
+
+              <div className="text-slate-500 text-sm mb-3">
+                Tap a tag to hide it from your feed.
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(userPrefs.persona.dislikedFeatures.length ? userPrefs.persona.dislikedFeatures : avoided).map((t) => {
+                  const active = blockedSet.has(t);
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => toggleBlockedTag(t)}
+                      className={
+                        active
+                          ? "px-4 py-2 rounded-xl text-xs font-black bg-rose-600 text-white"
+                          : "px-4 py-2 rounded-xl text-xs font-black bg-rose-50 text-rose-600 hover:bg-rose-100"
+                      }
+                      title={active ? "Hidden from feed" : "Tap to hide from feed"}
+                    >
+                      {active ? `Hidden: ${t}` : t}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {blockedTags.length > 0 && (
+                <div className="mt-4 text-xs text-slate-500">
+                  Hidden tags: <span className="font-bold">{blockedTags.length}</span>
+                </div>
+              )}
             </div>
 
-            <div className="mt-auto pt-8">
+            {/* Actions */}
+            <div className="mt-auto pt-2">
+              <button
+                onClick={shareLink}
+                className="w-full py-4 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black mb-4"
+              >
+                Share Seligo.AI
+              </button>
+
               <button
                 onClick={() => setHowOpen(true)}
-                className="w-full py-3 rounded-2xl bg-slate-100 text-slate-900 font-black mb-4"
+                className="w-full py-4 rounded-2xl bg-slate-100 text-slate-900 font-black mb-4"
               >
                 How it works
               </button>
 
-              <button 
+              <button
                 onClick={handleResetData}
                 className="w-full py-5 bg-rose-50 text-rose-500 border border-rose-100 rounded-[2rem] font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors"
               >
@@ -880,7 +1120,7 @@ const App: React.FC = () => {
                               <h4 className="font-black text-slate-900 leading-tight">{item.name}</h4>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.brand}</p>
                               <div className="flex justify-between items-center mt-2">
-                                <span className="font-black text-indigo-600">${item.price}</span>
+                                <span className="font-black text-[var(--seligo-primary)]">${item.price}</span>
                                 <button onClick={() => setUserPrefs(prev => ({...prev, cart: prev.cart.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-rose-500 transition-colors p-1">
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -929,7 +1169,7 @@ const App: React.FC = () => {
                                         source: "bag_move_to_cart",
                                       }).catch(console.warn);
                                     }}
-                                    className="text-indigo-600 font-black text-[10px] uppercase tracking-widest hover:underline"
+                                    className="text-[var(--seligo-primary)] font-black text-[10px] uppercase tracking-widest hover:underline"
                                   >
                                     Move to Bag
                                   </button>
@@ -963,7 +1203,7 @@ const App: React.FC = () => {
                    setLeadStatus("idle");
                    setShowCheckout(true);
                  }}
-                 className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
+                 className="w-full py-5 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-[2rem] font-black text-xl shadow-2xl transition-all active:scale-95 disabled:opacity-50"
                  disabled={userPrefs.cart.length === 0}
                >
                  Checkout
@@ -989,20 +1229,20 @@ const App: React.FC = () => {
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
 
       {/* Modern Navigation Bar */}
-      <nav className="shrink-0 sticky bottom-0 relative bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[55]">
-        <button onClick={() => setView('browsing')} className={`flex flex-col items-center gap-1 transition-all ${view === 'browsing' ? 'text-indigo-600 scale-110' : 'text-slate-300'}`}>
+      <nav className="shrink-0 sticky bottom-0 relative bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[250]">
+        <button onClick={() => setView('browsing')} className={`flex flex-col items-center gap-1 transition-all ${view === 'browsing' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <Compass className="w-6 h-6" />
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Explore</span>
         </button>
-        <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-indigo-600 scale-110' : 'text-slate-300'}`}>
+        <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <BrainCircuit className="w-6 h-6" />
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Insights</span>
         </button>
-        <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1 transition-all ${view === 'cart' ? 'text-indigo-600 scale-110' : 'text-slate-300'}`}>
+        <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1 transition-all ${view === 'cart' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <div className="relative">
             <ShoppingBag className="w-6 h-6" />
             {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-600 rounded-full border-2 border-white" />
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--seligo-primary)] rounded-full border-2 border-white" />
             )}
           </div>
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Bag</span>

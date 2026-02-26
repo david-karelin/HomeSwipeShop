@@ -31,7 +31,7 @@ function normalizeProduct(id: string, data: any): Product {
   return {
     id,
     name: data.name ?? data.title ?? "Untitled",
-    brand: data.brand ?? "Home Decor",
+    brand: data.brand && String(data.brand).trim().length > 0 ? String(data.brand) : "Seligo.AI",
     price: Number(data.price ?? 0),
     description: data.description ?? "No description yet.",
     category: data.category ?? "General",
