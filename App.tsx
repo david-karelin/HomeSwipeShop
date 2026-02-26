@@ -5,6 +5,7 @@ import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
 import HowItWorksModal from './src/components/HowItWorksModal';
+import seligoLogo from './src/assets/seligo-logo.png';
 import { 
   Search, 
   ShoppingBag, 
@@ -605,8 +606,8 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[var(--seligo-primary)] flex flex-col items-center justify-center p-6 text-white">
         <div className="mb-12 text-center animate-in fade-in zoom-in duration-500">
-          <div className="w-24 h-24 bg-white/20 backdrop-blur-xl rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20">
-            <ShoppingBag className="w-12 h-12" />
+          <div className="w-24 h-24 bg-white/20 backdrop-blur-xl rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 overflow-hidden p-3">
+            <img src={seligoLogo} alt="Seligo.AI logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-5xl font-black mb-2 tracking-tighter">Seligo.AI</h1>
           <p className="text-sky-100 font-medium opacity-80 text-lg italic">AI-powered home discovery</p>
@@ -720,8 +721,8 @@ const App: React.FC = () => {
       <header className="shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl z-[250] flex justify-between items-center border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 bg-[var(--seligo-primary)] rounded-xl flex items-center justify-center shadow-lg shadow-sky-200">
-              <ShoppingBag className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 bg-[var(--seligo-primary)] rounded-xl flex items-center justify-center shadow-lg shadow-sky-200 overflow-hidden p-1.5">
+              <img src={seligoLogo} alt="Seligo.AI logo" className="w-full h-full object-contain" />
             </div>
             {isAlgorithmRunning && (
               <div className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--seligo-accent)] rounded-full flex items-center justify-center animate-pulse border-2 border-white">
