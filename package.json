@@ -15,7 +15,9 @@
     "export:events": "tsx scripts/exportEvents.ts",
     "backfill:checkout": "tsx scripts/backfillCheckoutFields.ts",
     "bulk:affiliate": "tsx scripts/bulkSetAffiliate.ts",
-    "bulk:affiliate:dry": "tsx scripts/bulkSetAffiliate.ts --dry-run"
+    "bulk:affiliate:dry": "tsx scripts/bulkSetAffiliate.ts --dry-run",
+    "seed:launch": "tsx scripts/seedLaunchSet.ts",
+    "seed:launch:dry": "tsx scripts/seedLaunchSet.ts --dry-run"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

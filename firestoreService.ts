@@ -10,8 +10,10 @@ import {
   type QueryDocumentSnapshot,
   type DocumentData,
   doc,
+  deleteDoc,
   setDoc,
   addDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 import { auth, db } from "./firebase";
@@ -140,6 +142,31 @@ export async function fetchMySwipes() {
   return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
 }
 
+export async function clearMySwipes() {
+  const user = await ensureUser();
+  const snap = await getDocs(collection(db, "users", user.uid, "swipes"));
+
+  if (snap.empty) return;
+
+  let batch = writeBatch(db);
+  let inBatch = 0;
+
+  for (const docSnap of snap.docs) {
+    batch.delete(docSnap.ref);
+    inBatch++;
+
+    if (inBatch >= 450) {
+      await batch.commit();
+      batch = writeBatch(db);
+      inBatch = 0;
+    }
+  }
+
+  if (inBatch > 0) {
+    await batch.commit();
+  }
+}
+
 /**
  * Save a swipe event to a top-level `swipes` collection.
  * Payload example: { productId, direction: 'left'|'right', action?: 'wishlist'|'cart' }
@@ -160,6 +187,11 @@ export const saveSwipe = async (payload: {
     { merge: true }
   );
 };
+
+export async function deleteMySwipe(productId: string) {
+  const user = await ensureUser();
+  await deleteDoc(doc(db, "users", user.uid, "swipes", productId));
+}
 
 export async function saveLead(payload: {
   email: string;

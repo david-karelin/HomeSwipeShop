@@ -64,6 +64,12 @@ const DEFAULT_PREFS: UserPreferences = {
 
 type TagScores = Record<string, number>;
 
+type UndoEntry = {
+  product: Product;
+  direction: "left" | "right";
+  action: "wishlist" | "cart" | null;
+};
+
 const loadTagScores = (): TagScores => {
   try { return JSON.parse(localStorage.getItem("tagScores") || "{}"); }
   catch { return {}; }
@@ -113,8 +119,53 @@ const App: React.FC = () => {
   const [leadError, setLeadError] = useState<string>("");
   const [howOpen, setHowOpen] = useState(false);
   const [tagScores, setTagScores] = useState<TagScores>(() => loadTagScores());
+  const [undoCount, setUndoCount] = useState(0);
   const swipedRef = useRef<Set<string>>(new Set());
+  const undoRef = useRef<UndoEntry[]>([]);
   const refineLockRef = useRef(false);
+
+  function pushUndo(entry: UndoEntry) {
+    undoRef.current.push(entry);
+    setUndoCount(undoRef.current.length);
+  }
+
+  function removeLastById(list: Product[], id: string) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].id === id) return [...list.slice(0, i), ...list.slice(i + 1)];
+    }
+    return list;
+  }
+
+  const undoLast = () => {
+    const last = undoRef.current.pop();
+    setUndoCount(undoRef.current.length);
+    if (!last) return;
+
+    setCurrentIndex((i) => Math.max(i - 1, 0));
+
+    swipedRef.current.delete(last.product.id);
+
+    bumpTags(last.product, last.direction === "left" ? +1 : -2);
+
+    setUserPrefs((prev) => {
+      const next = { ...prev };
+
+      if (last.direction === "left") {
+        next.dislikedProducts = removeLastById(prev.dislikedProducts, last.product.id);
+      } else {
+        next.likedProducts = removeLastById(prev.likedProducts, last.product.id);
+        if (last.action === "wishlist") next.wishlist = removeLastById(prev.wishlist, last.product.id);
+        if (last.action === "cart") next.cart = removeLastById(prev.cart, last.product.id);
+        next.lastAction = null;
+      }
+
+      return next;
+    });
+
+    void Firestore.deleteMySwipe(last.product.id).catch(console.error);
+
+    setSelectedProduct(null);
+  };
 
   const bumpTags = (product: Product, delta: number) => {
     setTagScores(prev => {
@@ -210,14 +261,29 @@ const App: React.FC = () => {
 
   const handleLogin = () => setView('interests');
 
-  const handleResetData = () => {
-    if (confirm("Are you sure? This will clear your style persona and all saved items.")) {
-      localStorage.clear();
-      setUserPrefs(DEFAULT_PREFS);
-      setProducts([]);
-      setCurrentIndex(0);
-      setView('auth');
+  const handleResetData = async () => {
+    if (!confirm("Are you sure? This will clear your style persona and all saved items.")) return;
+
+    try {
+      await Firestore.clearMySwipes();
+      const after = await Firestore.fetchMySwipes();
+      console.log("swipes after reset:", after.length);
+      swipedRef.current = new Set();
+    } catch (e) {
+      console.error("Failed to clear swipes:", e);
     }
+
+    localStorage.removeItem("swipeshop_userPrefs");
+    localStorage.removeItem("swipeshop_tagScores");
+    localStorage.removeItem("swipeshop_undo");
+    localStorage.removeItem("swipeshop_data");
+    localStorage.removeItem("tagScores");
+    setUserPrefs(DEFAULT_PREFS);
+    setProducts([]);
+    setCurrentIndex(0);
+    setCursor(null);
+    setHasMore(true);
+    setView("interests");
   };
 
   const handleToggleInterest = (id: string) => {
@@ -230,22 +296,42 @@ const App: React.FC = () => {
   };
 
   const startDiscovery = async () => {
-    if (userPrefs.interests.length === 0) return;
+    const interests = [...userPrefs.interests];
+    if (interests.length === 0) return;
 
     setIsLoading(true);
     try {
-      // reset paging + feed
+      setProducts([]);
       setCursor(null);
       setHasMore(true);
       setCurrentIndex(0);
 
-      const page = await Firestore.fetchProductsByInterestsPage(userPrefs.interests, 30, null);
       const swipes = await Firestore.fetchMySwipes();
-      swipedRef.current = new Set(swipes.map((s: any) => s.id));
+      swipedRef.current = new Set(swipes.map((s: any) => s.productId ?? s.id));
 
-      setProducts(page.items.filter(p => !swipedRef.current.has(p.id)));
-      setCursor(page.cursor);
-      setHasMore(page.hasMore);
+      let nextCursor: any = null;
+      let more = true;
+      let safety = 0;
+      const out: Product[] = [];
+
+      while (more && out.length < 30 && safety < 6) {
+        const page = await Firestore.fetchProductsByInterestsPage(interests, 30, nextCursor);
+
+        nextCursor = page.cursor;
+        more = page.hasMore;
+
+        for (const p of page.items) {
+          if (!swipedRef.current.has(p.id)) out.push(p);
+          if (out.length >= 30) break;
+        }
+
+        if (!page.items?.length) break;
+        safety++;
+      }
+
+      setProducts(out);
+      setCursor(nextCursor);
+      setHasMore(more);
       setView("browsing");
     } catch (e) {
       console.error("Firestore load failed:", e);
@@ -270,6 +356,7 @@ const App: React.FC = () => {
 
       bumpTags(currentProduct, -1);
       swipedRef.current.add(currentProduct.id);
+      pushUndo({ product: currentProduct, direction: "left", action: null });
       setCurrentIndex(i => i + 1);
       return;
     }
@@ -299,6 +386,7 @@ const App: React.FC = () => {
       lastAction: action
     }));
 
+    pushUndo({ product: currentProduct, direction: "right", action });
     setCurrentIndex(prev => prev + 1);
     setSelectedProduct(null);
     // Optionally, auto-load more if needed
@@ -344,7 +432,8 @@ const App: React.FC = () => {
         20,
         cursor
       );
-      const ranked = [...page.items].sort((a, b) => scoreProduct(b) - scoreProduct(a));
+      const ranked = [...page.items];
+      ranked.sort((a, b) => Number(!!b.asin) - Number(!!a.asin) || scoreProduct(b) - scoreProduct(a));
 
       setProducts(prev => {
         const seen = new Set(prev.map(p => p.id));
@@ -524,6 +613,15 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={undoLast}
+            disabled={undoCount === 0}
+            className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-40 transition-colors"
+            aria-label="Undo"
+            title="Undo"
+          >
+            <RotateCcw className="w-5 h-5" />
+          </button>
           <button onClick={() => setView('cart')} className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 relative hover:text-indigo-600 transition-colors">
             <ShoppingBag className="w-5 h-5" />
             {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
@@ -556,30 +654,28 @@ const App: React.FC = () => {
             ) : (
               <div className="text-center p-10 bg-white rounded-[3rem] shadow-xl border border-slate-100 max-w-[280px] animate-in fade-in zoom-in">
                 <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  {hasMore && isAlgorithmRunning ? (
-                    <Loader2 className="w-10 h-10 text-indigo-300 animate-spin" />
-                  ) : (
-                    <History className="w-10 h-10 text-indigo-300" />
-                  )}
+                  <History className="w-10 h-10 text-indigo-300" />
                 </div>
-                <h3 className="text-xl font-black text-slate-900 mb-2">
-                  {hasMore ? (isAlgorithmRunning ? "Loading more..." : "Finding more...") : "No more products"}
-                </h3>
+                <h3 className="text-xl font-black text-slate-900 mb-2">No more items</h3>
 
-                <p className="text-slate-500 text-sm mb-8">
-                  {hasMore
-                    ? "Generating new products based on your latest matches..."
-                    : "You’ve reached the end of the catalog for these interests. Try selecting more interests or reseed more products."}
+                <p className="text-slate-500 text-sm mb-6">
+                  You’ve reached the end of available items for these interests.
                 </p>
 
-                {!hasMore && (
+                <div className="space-y-3">
                   <button
                     onClick={() => setView("interests")}
                     className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors"
                   >
-                    Choose More Interests
+                    Change interests
                   </button>
-                )}
+                  <button
+                    onClick={handleResetData}
+                    className="w-full py-4 bg-slate-100 text-slate-900 rounded-2xl font-bold hover:bg-slate-200 transition-colors"
+                  >
+                    Reset passes
+                  </button>
+                </div>
               </div>
             )}
           </div>

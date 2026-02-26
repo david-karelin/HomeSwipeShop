@@ -139,7 +139,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
                     onClick={() => handleBuy(p)}
                     className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 text-white font-black text-xs uppercase tracking-widest hover:bg-indigo-700 active:scale-95 transition"
                   >
-                    Buy
+                    Open on Amazon
                   </button>
                 </div>
               ))

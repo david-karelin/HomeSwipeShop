@@ -1,0 +1,13 @@
+[
+  {
+    "asin": "B000000000",
+    "name": "Example Product Name",
+    "brand": "Example Brand",
+    "category": "tables",
+    "price": 129.99,
+    "imageUrl": "https://images.example.com/product.jpg",
+    "description": "Short 1-2 line product description.",
+    "purchaseUrl": "https://www.amazon.ca/dp/B000000000/ref=nosim?tag=yourtag-20",
+    "tags": ["tables", "modern", "living_room"]
+  }
+]
