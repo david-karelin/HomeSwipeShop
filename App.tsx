@@ -314,7 +314,7 @@ const App: React.FC = () => {
       let safety = 0;
       const out: Product[] = [];
 
-      while (more && out.length < 30 && safety < 6) {
+      while (more && out.length < 80 && safety < 8) {
         const page = await Firestore.fetchProductsByInterestsPage(interests, 30, nextCursor);
 
         nextCursor = page.cursor;
@@ -322,14 +322,20 @@ const App: React.FC = () => {
 
         for (const p of page.items) {
           if (!swipedRef.current.has(p.id)) out.push(p);
-          if (out.length >= 30) break;
+          if (out.length >= 80) break;
         }
 
         if (!page.items?.length) break;
         safety++;
       }
 
-      setProducts(out);
+      const ranked = [...out].sort((a, b) => {
+        const scoreA = (a.asin ? 100000 : 0) + scoreProduct(a);
+        const scoreB = (b.asin ? 100000 : 0) + scoreProduct(b);
+        return scoreB - scoreA;
+      });
+
+      setProducts(ranked);
       setCursor(nextCursor);
       setHasMore(more);
       setView("browsing");
