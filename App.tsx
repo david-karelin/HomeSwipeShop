@@ -5,6 +5,7 @@ import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
 import HowItWorksModal from './src/components/HowItWorksModal';
+import seligoLogo from './src/assets/seligo-logo-primary-0EA5E9.png';
 import { 
   Search, 
   ShoppingBag, 
@@ -605,11 +606,13 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[var(--seligo-primary)] flex flex-col items-center justify-center p-6 text-white">
         <div className="mb-12 text-center animate-in fade-in zoom-in duration-500">
-          <div className="w-24 h-24 bg-white/20 backdrop-blur-xl rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 overflow-hidden p-3">
-            <img src="/seligoLogo.png" alt="Seligo.AI logo" className="w-full h-full object-contain" />
-          </div>
+          <img
+            src={seligoLogo}
+            alt="Seligo.AI"
+            className="w-24 h-24 rounded-[2rem] object-cover shadow-2xl mx-auto mb-6"
+          />
           <h1 className="text-5xl font-black mb-2 tracking-tighter">Seligo.AI</h1>
-          <p className="text-sky-100 font-medium opacity-80 text-lg italic">AI-powered home discovery</p>
+          <p className="text-white font-medium opacity-80 text-lg italic">AI-powered home discovery</p>
         </div>
         <div className="w-full max-sm:px-4 space-y-4">
           <button onClick={handleLogin} className="w-full py-5 bg-white text-[var(--seligo-primary)] rounded-3xl font-black text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl">Get Started</button>
@@ -632,7 +635,7 @@ const App: React.FC = () => {
               onClick={() => handleToggleInterest(interest.id)}
               className={`p-6 rounded-[2rem] border-2 transition-all flex flex-col items-center text-center space-y-3 ${
                 userPrefs.interests.includes(interest.id)
-                  ? 'border-[var(--seligo-primary)] bg-white text-[var(--seligo-primary)] shadow-lg shadow-sky-100'
+                  ? 'border-[var(--seligo-primary)] bg-white text-[var(--seligo-primary)] shadow-lg'
                   : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
               }`}
             >
@@ -665,29 +668,29 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center overflow-hidden">
         {/* Animated Background Pulse */}
-        <div className="absolute inset-0 bg-indigo-500/5 animate-pulse" />
+        <div className="absolute inset-0 bg-[var(--seligo-primary)]/5 animate-pulse" />
         
         {/* AI Brain Graphic */}
         <div className="relative mb-12">
-          <div className="absolute inset-0 bg-indigo-500 rounded-full blur-3xl opacity-20 animate-pulse" />
+          <div className="absolute inset-0 bg-[var(--seligo-primary)] rounded-full blur-3xl opacity-20 animate-pulse" />
           <div className="relative w-32 h-32 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 shadow-2xl">
-            <div className="absolute inset-0 border-t-2 border-indigo-500 rounded-full animate-spin duration-700" />
-            <BrainCircuit className="w-16 h-16 text-indigo-400 animate-pulse" />
+            <div className="absolute inset-0 border-t-2 border-[var(--seligo-primary)] rounded-full animate-spin duration-700" />
+            <BrainCircuit className="w-16 h-16 text-[var(--seligo-primary)] animate-pulse" />
           </div>
           
           {/* Scanning Line Effect */}
-          <div className="absolute -left-12 -right-12 top-1/2 h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent animate-[bounce_2s_infinite] opacity-50" />
+          <div className="absolute -left-12 -right-12 top-1/2 h-[1px] bg-gradient-to-r from-transparent via-[var(--seligo-primary)] to-transparent animate-[bounce_2s_infinite] opacity-50" />
         </div>
 
         <div className="relative z-10 space-y-6">
           <h2 className="text-3xl font-black text-white tracking-tighter">AI Discovery Engine</h2>
           <div className="flex flex-col items-center space-y-2">
-             <p className="text-indigo-400 font-mono text-sm uppercase tracking-[0.3em] h-6">
+             <p className="text-[var(--seligo-primary)] font-mono text-sm uppercase tracking-[0.3em] h-6">
                {discoveryMessages[discoveryStep]}
              </p>
              <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mt-4">
                 <div 
-                  className="h-full bg-indigo-500 transition-all duration-1000 ease-out" 
+                  className="h-full bg-[var(--seligo-primary)] transition-all duration-1000 ease-out" 
                   style={{ width: `${(discoveryStep + 1) * 25}%` }} 
                 />
              </div>
@@ -720,9 +723,7 @@ const App: React.FC = () => {
       <header className="shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl z-[250] flex justify-between items-center border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 bg-[var(--seligo-primary)] rounded-xl flex items-center justify-center shadow-lg shadow-sky-200 overflow-hidden p-1.5">
-              <img src="/seligoLogo.png" alt="Seligo.AI logo" className="w-full h-full object-contain" />
-            </div>
+            <img src={seligoLogo} alt="Seligo.AI" className="w-10 h-10 rounded-xl object-cover shadow-lg" />
             {isAlgorithmRunning && (
               <div className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--seligo-accent)] rounded-full flex items-center justify-center animate-pulse border-2 border-white">
                 <BrainCircuit className="w-2 h-2 text-white" />
@@ -777,8 +778,8 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="text-center p-10 bg-white rounded-[3rem] shadow-xl border border-slate-100 max-w-[280px] animate-in fade-in zoom-in">
-                <div className="w-20 h-20 bg-sky-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <History className="w-10 h-10 text-sky-300" />
+                <div className="w-20 h-20 bg-[var(--seligo-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <History className="w-10 h-10 text-[var(--seligo-primary)]" />
                 </div>
                 <h3 className="text-xl font-black text-slate-900 mb-2">No more items</h3>
 
@@ -846,7 +847,7 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <button 
                     onClick={() => handleAction('wishlist')}
-                    className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-sky-50 transition-all group"
+                    className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-[var(--seligo-primary)]/10 transition-all group"
                   >
                     <Bookmark className="w-8 h-8 text-slate-400 group-hover:text-[var(--seligo-primary)] mb-2" />
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Save Item</span>
@@ -883,7 +884,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Vibe card */}
-            <div className="bg-[var(--seligo-primary)] rounded-[2.5rem] p-8 text-white shadow-2xl shadow-sky-200 mb-6">
+            <div className="bg-[var(--seligo-primary)] rounded-[2.5rem] p-8 text-white shadow-2xl mb-6">
               <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
                   <BrainCircuit className="w-8 h-8" />
@@ -1001,7 +1002,7 @@ const App: React.FC = () => {
                 {topRooms.length ? topRooms.map((t) => (
                   <span
                     key={t}
-                    className="px-4 py-2 bg-sky-50 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
+                    className="px-4 py-2 bg-[var(--seligo-primary)]/10 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
                   >
                     {t}
                   </span>
@@ -1018,7 +1019,7 @@ const App: React.FC = () => {
                 {topCategories.length ? topCategories.map((t) => (
                   <span
                     key={t}
-                    className="px-4 py-2 bg-sky-50 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
+                    className="px-4 py-2 bg-[var(--seligo-primary)]/10 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
                   >
                     {t}
                   </span>

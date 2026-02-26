@@ -98,7 +98,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({ product, onSwipe, onSelectAction,
         <div className="grid grid-cols-2 gap-4 w-full pt-4">
           <button
             onClick={() => onSelectAction('wishlist')}
-            className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-sky-50 border border-slate-100 rounded-3xl transition-all group"
+            className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-[var(--seligo-primary)]/10 border border-slate-100 rounded-3xl transition-all group"
           >
             <Bookmark className="w-8 h-8 text-slate-400 group-hover:text-[var(--seligo-primary)] mb-2 transition-transform group-hover:scale-110" />
             <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-[var(--seligo-primary)]">Wishlist</span>
@@ -156,7 +156,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({ product, onSwipe, onSelectAction,
       <div className="absolute bottom-0 left-0 right-0 p-8 text-white pointer-events-none">
         <div className="flex justify-between items-end mb-3">
           <div className="max-w-[70%]">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-400 mb-1 block">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--seligo-primary)] mb-1 block">
               Seligo.AI
             </span>
             <h2 className="text-3xl font-black leading-tight drop-shadow-lg">{product.name}</h2>
