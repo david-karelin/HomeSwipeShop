@@ -24,7 +24,6 @@ import {
   BrainCircuit, 
   History, 
   Tag, 
-  ChevronLeft, 
   Bookmark, 
   ShoppingCart,
   RotateCcw,
@@ -175,9 +174,107 @@ const INTEREST_IDS = new Set([
 
 const isVibeTag = (t: string) => VIBE_TAGS.has(t);
 const isRoomTag = (t: string) => ROOM_TAGS.has(t);
-const SCREEN =
-  "absolute inset-x-0 top-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))]";
-const SCREEN_CENTER = `${SCREEN} flex items-center justify-center`;
+
+function NavItem({
+  active,
+  label,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-1 select-none"
+      style={{ width: 70 }}
+      aria-current={active ? "page" : undefined}
+    >
+      <div
+        className={`transition-colors ${active ? "text-[var(--seligo-primary)]" : "text-slate-300"}`}
+      >
+        {icon}
+      </div>
+
+      <span
+        className={`text-[10px] font-extrabold uppercase tracking-[0.18em] transition-colors ${
+          active ? "text-[var(--seligo-primary)]" : "text-slate-300"
+        }`}
+      >
+        {label}
+      </span>
+
+      <div
+        className={`mt-1 h-[3px] w-8 rounded-full transition-all ${
+          active ? "bg-[var(--seligo-primary)] opacity-100" : "bg-transparent opacity-0"
+        }`}
+      />
+    </button>
+  );
+}
+
+function Screen({
+  children,
+  className = "",
+  animate = true,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  animate?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "min-h-full w-full",
+        "px-6 pt-6 pb-6",
+        animate ? "animate-in slide-in-from-right duration-300" : "",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PageHeader({
+  title,
+  subtitle,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="min-w-0">
+        <div className="text-2xl font-extrabold text-slate-900 leading-tight">{title}</div>
+        {subtitle && <div className="text-sm text-slate-500 mt-1">{subtitle}</div>}
+      </div>
+
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors shrink-0"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5 text-slate-600" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SectionCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-3xl border border-slate-100 bg-slate-50 p-5 ${className}`}>
+      {children}
+    </div>
+  );
+}
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppState>('auth');
@@ -204,28 +301,33 @@ const App: React.FC = () => {
   const swipedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
   const refineLockRef = useRef(false);
-  const headerRef = useRef<HTMLDivElement>(null);
+  const prevViewRef = useRef(view);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
 
   useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
+    const prev = prevViewRef.current;
 
-    const set = () => {
-      const height = el.getBoundingClientRect().height;
-      el.parentElement?.style.setProperty("--seligo-header-h", `${height}px`);
-    };
+    if (prev === "roomscan" && view !== "roomscan") {
+      setRoomScanPicks([]);
+      setRoomScanPickStatus("idle");
+    }
 
-    set();
-    const ro = new ResizeObserver(set);
-    ro.observe(el);
-    window.addEventListener("resize", set);
+    prevViewRef.current = view;
+  }, [view]);
+
+  useEffect(() => {
+    if (!selectedProduct) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevTouchAction = document.body.style.touchAction;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
 
     return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", set);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction;
     };
-  }, []);
+  }, [selectedProduct]);
 
   const logLocalActivity = (kind: LocalActivityKind) => {
     setActivityLog((prev) => {
@@ -591,6 +693,15 @@ const App: React.FC = () => {
 
   const norm = (s: any) => String(s ?? "").trim().toLowerCase();
 
+  const aliasTag = (t: string) => {
+    const x = norm(t);
+    if (x === "add_rug" || x === "add-rug") return "rug";
+    if (x === "warm_lighting" || x === "warm-lighting") return "warm";
+    if (x === "throw-pillows" || x === "throw_pillows") return "throw";
+    if (x === "wall_art" || x === "wall-art") return "wall";
+    return x;
+  };
+
   const getDetectedObjects = (analysis: RoomScanAnalysis): string[] => {
     const objs = analysis?.debug?.objects;
     return Array.isArray(objs) ? objs.map(norm).filter(Boolean) : [];
@@ -608,16 +719,75 @@ const App: React.FC = () => {
     return a.map(norm).filter(x => sb.has(x));
   };
 
+  const prettyLabel = (s: string) =>
+    String(s || "")
+      .replace(/[_-]+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const buildRationaleForPick = (
+    p: Product,
+    analysis: RoomScanAnalysis,
+    ctx: {
+      missingRug: boolean;
+      missingPlant: boolean;
+      missingLamp: boolean;
+      hasBed: boolean;
+      recCats: string[];
+      recTags: string[];
+      vibeTags: string[];
+    }
+  ): string[] => {
+    const pCat = norm(p.category);
+    const pTags = Array.isArray(p.tags) ? p.tags.map(norm) : [];
+
+    const reasons: string[] = [];
+
+    if (ctx.missingRug && (pCat === "rugs" || pTags.includes("rug"))) {
+      reasons.push("No rug detected — adding one anchors the room and makes it feel warmer.");
+    }
+    if (ctx.missingPlant && (pCat === "plants" || pTags.includes("plant") || pTags.includes("plants"))) {
+      reasons.push("No plants detected — greenery adds life and contrast without clutter.");
+    }
+    if (ctx.missingLamp && (pCat === "lighting" || pTags.includes("lamp") || pTags.includes("light") || pTags.includes("lighting"))) {
+      reasons.push("Lighting looks limited — a lamp boosts warmth and ambiance.");
+    }
+    if (ctx.hasBed && (pCat === "bedding" || pTags.includes("pillow") || pTags.includes("throw-pillows") || pTags.includes("throw_pillows"))) {
+      reasons.push("Bed detected — bedding upgrades make the space look instantly more finished.");
+    }
+
+    if (ctx.recCats.includes(pCat)) {
+      reasons.push(`Matches your scan category: ${prettyLabel(pCat)}.`);
+    }
+
+    const tagHits = intersects(pTags, [...ctx.recTags, ...ctx.vibeTags]);
+    if (tagHits.length) {
+      reasons.push(`Matches your scan vibe: ${tagHits.slice(0, 2).map(prettyLabel).join(", ")}.`);
+    }
+
+    if (reasons.length === 0) {
+      if (pTags.length) reasons.push(`Style match: ${pTags.slice(0, 2).map(prettyLabel).join(", ")}.`);
+      else if (pCat) reasons.push(`Complements your space: ${prettyLabel(pCat)}.`);
+      else reasons.push("Picked to complement your room and preferences.");
+    }
+
+    return reasons.slice(0, 3);
+  };
+
   const buildRationaleSmart = (p: Product, analysis: RoomScanAnalysis) => {
     const objs = getDetectedObjects(analysis);
     const palette = getPalette(analysis);
 
-    const pTags = Array.isArray(p.tags) ? p.tags.map(norm) : [];
+    const pTagsRaw = Array.isArray(p.tags) ? p.tags.map(norm) : [];
+    const pTags = pTagsRaw.map(aliasTag);
     const pCat = norm(p.category);
 
-    const vibe = (analysis.vibeTags || []).map(norm);
-    const recTags = (analysis.recommendedTags || []).map(norm);
+    const vibeRaw = (analysis.vibeTags || []).map(norm);
+    const vibe = vibeRaw.map(aliasTag);
+    const recTagsRaw = (analysis.recommendedTags || []).map(norm);
+    const recTags = recTagsRaw.map(aliasTag);
     const recCats = (analysis.recommendedCategories || []).map(norm);
+    const avoid = (analysis.avoidTags || []).map(norm).map(aliasTag);
 
     const missingRug = !hasAny(objs, ["rug"]);
     const missingPlant = !hasAny(objs, ["potted plant"]);
@@ -626,29 +796,33 @@ const App: React.FC = () => {
 
     const reasons: string[] = [];
 
-    if (analysis.roomType) reasons.push(`Made for a ${analysis.roomType.replace(/_/g, " ")} refresh.`);
+    if (analysis.roomType) reasons.push(`Made for a ${prettyLabel(analysis.roomType)} refresh.`);
     else if (hasBed) reasons.push("Bedroom detected — optimizing for cozy + functional upgrades.");
 
-    if (missingRug && (pCat === "rugs" || pTags.includes("rug"))) {
+    if (missingRug && (pCat.includes("rug") || pTags.some(t => t.includes("rug")))) {
       reasons.push("No rug detected — adding one anchors the room and makes it feel warmer.");
     }
-    if (missingPlant && (pCat === "plants" || pTags.includes("plant"))) {
+    if (missingPlant && (pCat.includes("plant") || pTags.some(t => t.includes("plant")))) {
       reasons.push("No plants detected — greenery adds life + contrast without clutter.");
     }
-    if (missingLamp && (pCat === "lighting" || pTags.includes("lamp") || pTags.includes("light"))) {
-      reasons.push("No lamp detected — warm lighting boosts the cozy vibe at night.");
+    if (
+      missingLamp &&
+      (pCat.includes("light") || pTags.some((t) => t.includes("lamp") || t.includes("light") || t.includes("lighting")))
+    ) {
+      reasons.push("Lighting looks limited — a lamp boosts warmth and ambiance.");
     }
-    if (hasBed && (pCat === "bedding" || pTags.includes("pillow") || pTags.includes("throw-pillows"))) {
+    if (hasBed && (pCat.includes("bed") || pTags.some(t => t.includes("pillow") || t.includes("throw")))) {
       reasons.push("Bed is the focal point — upgraded bedding/pillows give the biggest visual payoff.");
     }
-    if (hasBed && (pCat === "wall_art" || pTags.includes("art") || pTags.includes("wall"))) {
+    if (hasBed && (pCat.includes("wall") || pTags.some(t => t.includes("art") || t.includes("wall")))) {
       reasons.push("Great above-bed upgrade — adds a focal point and makes the space feel finished.");
     }
 
-    const tagHits = intersects(pTags, [...vibe, ...recTags]).slice(0, 3);
-    if (tagHits.length) reasons.push(`Matches your scan vibe: ${tagHits.join(", ")}.`);
+    const tagUniverse = [...vibe, ...recTags];
+    const tagHits = intersects(pTags, tagUniverse).slice(0, 3);
+    if (tagHits.length) reasons.push(`Matches your scan vibe: ${tagHits.map(prettyLabel).join(", ")}.`);
 
-    const tealish = palette.some((h) => {
+    const paletteTealish = palette.some((h) => {
       const hex = h.replace("#", "");
       if (hex.length !== 6) return false;
       const r = parseInt(hex.slice(0, 2), 16);
@@ -656,14 +830,23 @@ const App: React.FC = () => {
       const b = parseInt(hex.slice(4, 6), 16);
       return g > r && b > r && g > 80 && b > 80;
     });
+    const tealish = vibe.includes("teal") || paletteTealish;
 
-    if (tealish && (pCat === "lighting" || pTags.includes("warm") || pTags.includes("warm-lighting"))) {
+    if (tealish && (pCat.includes("light") || pTags.includes("warm"))) {
       reasons.push("Your room reads cool/teal — warm lighting balances it and feels more inviting.");
     }
 
-    if (recCats.includes(pCat)) reasons.push("Direct match to categories your scan requested.");
+    const catHit = recCats.find((c) => pCat.includes(c) || c.includes(pCat));
+    if (catHit) reasons.push(`Matches your scan category: ${prettyLabel(catHit)}.`);
 
-    if (!reasons.length) reasons.push("Strong overall fit based on your scan + preferences.");
+    const avoidHit = avoid.find((t) => pTags.includes(t));
+    if (avoidHit) reasons.push(`Avoids a dealbreaker style: ${prettyLabel(avoidHit)}.`);
+
+    if (!reasons.length) {
+      if (pCat) reasons.push(`Complements your space: ${prettyLabel(pCat)}.`);
+      else if (pTags.length) reasons.push(`Style match: ${pTags.slice(0, 2).map(prettyLabel).join(", ")}.`);
+      else reasons.push("Picked to complement your room and preferences.");
+    }
 
     return reasons.slice(0, 3);
   };
@@ -705,7 +888,15 @@ const App: React.FC = () => {
         return {
           product: p,
           score,
-          rationale: buildRationaleSmart(p, analysis),
+          rationale: buildRationaleForPick(p, analysis, {
+            missingRug,
+            missingPlant,
+            missingLamp,
+            hasBed,
+            recCats,
+            recTags,
+            vibeTags,
+          }),
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -717,7 +908,15 @@ const App: React.FC = () => {
       .map((product) => ({
         product,
         score: scoreProduct(product) + (product.asin ? 500 : 0),
-        rationale: buildRationaleSmart(product, analysis),
+        rationale: buildRationaleForPick(product, analysis, {
+          missingRug,
+          missingPlant,
+          missingLamp,
+          hasBed,
+          recCats,
+          recTags,
+          vibeTags,
+        }),
       }));
 
     return fallback;
@@ -1040,51 +1239,76 @@ const App: React.FC = () => {
       <div className="h-full flex flex-col">
       {/* Header */}
       <header
-        ref={headerRef}
-        className="sticky top-0 z-[250] shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl flex justify-between items-center border-b border-slate-100"
-        style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}
+        className="sticky top-0 z-[250] bg-white/90 backdrop-blur-xl border-b border-slate-100"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <img src={seligoLogo} alt="Seligo.AI" className="w-10 h-10 rounded-xl object-cover shadow-lg" />
-            {isAlgorithmRunning && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--seligo-accent)] rounded-full flex items-center justify-center animate-pulse border-2 border-white">
-                <BrainCircuit className="w-2 h-2 text-white" />
+        <div className="h-[4.75rem] px-6 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative shrink-0">
+              <img
+                src={seligoLogo}
+                alt="Seligo.AI"
+                className="w-10 h-10 rounded-xl object-cover shadow"
+              />
+              {isAlgorithmRunning && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--seligo-accent)] rounded-full flex items-center justify-center animate-pulse border-2 border-white">
+                  <BrainCircuit className="w-2 h-2 text-white" />
+                </div>
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <div className="font-black text-[17px] leading-tight text-slate-900 truncate">
+                Seligo.AI
               </div>
-            )}
+              <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-[var(--seligo-accent)] truncate">
+                {isAlgorithmRunning ? "Algorithm refining…" : "ML active"}
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="block font-black text-lg leading-tight text-slate-900">Seligo.AI</span>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-[var(--seligo-accent)]">
-              {isAlgorithmRunning ? 'Algorithm Refining...' : 'ML Active'}
-            </span>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={undoLast}
+              disabled={undoCount === 0}
+              className="w-10 h-10 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-40 transition-colors"
+              aria-label="Undo"
+              title="Undo"
+            >
+              <RotateCcw className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={() => setView("cart")}
+              className="w-10 h-10 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 relative hover:text-[var(--seligo-primary)] transition-colors"
+              aria-label="Bag"
+              title="Bag"
+            >
+              <ShoppingBag className="w-5 h-5" />
+              {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[var(--seligo-primary)] text-white text-[10px] flex items-center justify-center rounded-full font-extrabold border-2 border-white">
+                  {userPrefs.cart.length + userPrefs.wishlist.length}
+                </span>
+              )}
+            </button>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={undoLast}
-            disabled={undoCount === 0}
-            className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-40 transition-colors"
-            aria-label="Undo"
-            title="Undo"
-          >
-            <RotateCcw className="w-5 h-5" />
-          </button>
-          <button onClick={() => setView('cart')} className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 relative hover:text-[var(--seligo-primary)] transition-colors">
-            <ShoppingBag className="w-5 h-5" />
-            {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-[var(--seligo-primary)] text-white text-[10px] flex items-center justify-center rounded-full font-bold border-2 border-white">
-                {userPrefs.cart.length + userPrefs.wishlist.length}
-              </span>
-            )}
-          </button>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 relative overflow-hidden" style={{ paddingTop: "var(--seligo-header-h, 96px)" }}>
+      <main
+        className="flex-1 overflow-y-auto no-scrollbar bg-slate-50"
+        style={{
+          paddingBottom:
+            view === "roomscan"
+              ? "calc(4.0rem + env(safe-area-inset-bottom))"
+              : "calc(4.75rem + env(safe-area-inset-bottom))",
+        }}
+      >
         {view === "discovering" && (
-          <div className={`${SCREEN} bg-slate-900 overflow-hidden`}>
+          <div
+            className="min-h-[calc(100dvh-8rem)] bg-slate-900 relative overflow-hidden"
+          >
             {/* Animated Background Pulse */}
             <div className="absolute inset-0 bg-[var(--seligo-primary)]/5 animate-pulse" />
 
@@ -1140,104 +1364,168 @@ const App: React.FC = () => {
         )}
 
         {view === 'browsing' && (
-          <div className={`${SCREEN_CENTER} p-6 ${overlayOpen ? 'pointer-events-none' : ''}`}>
+          <Screen animate={false} className={overlayOpen ? "pointer-events-none" : ""}>
             {currentIndex < products.length ? (
-              <div className="w-full flex flex-col items-center">
-                 <SwipeCard 
-                  key={products[currentIndex].id}
-                  product={products[currentIndex]} 
-                  onSwipe={handleSwipe}
-                  onSelectAction={handleAction}
-                  onTap={() => setSelectedProduct(products[currentIndex])}
-                />
-                <div className="mt-6 flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white px-4 py-2 rounded-full shadow-sm">
-                  <Sparkles className="w-3 h-3 text-[var(--seligo-accent)]" />
-                  Match: {matchPercent(products[currentIndex])}%
+              <div
+                className="flex items-center justify-center"
+                style={{
+                  minHeight:
+                    "calc(100dvh - var(--seligo-header-h,76px) - 4.75rem - env(safe-area-inset-bottom))",
+                }}
+              >
+                <div className="w-full flex flex-col items-center">
+                  <SwipeCard
+                    key={products[currentIndex].id}
+                    product={products[currentIndex]}
+                    onSwipe={handleSwipe}
+                    onSelectAction={handleAction}
+                    onTap={() => setSelectedProduct(products[currentIndex])}
+                  />
+                  <div className="mt-4 flex items-center gap-2 text-slate-400 text-[11px] font-extrabold uppercase tracking-[0.22em] bg-white px-4 py-2 rounded-full border border-slate-100 shadow-sm">
+                    <Sparkles className="w-3 h-3 text-[var(--seligo-accent)]" />
+                    Match: {matchPercent(products[currentIndex])}%
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="text-center p-10 bg-white rounded-[3rem] shadow-xl border border-slate-100 max-w-[280px] animate-in fade-in zoom-in">
-                <div className="w-20 h-20 bg-[var(--seligo-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <History className="w-10 h-10 text-[var(--seligo-primary)]" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-2">No more items</h3>
+              <div
+                className="flex items-center justify-center"
+                style={{
+                  minHeight:
+                    "calc(100dvh - var(--seligo-header-h,76px) - 4.75rem - env(safe-area-inset-bottom))",
+                }}
+              >
+                <div className="text-center p-8 bg-white rounded-[2.5rem] shadow-xl border border-slate-100 max-w-[300px] animate-in fade-in zoom-in">
+                  <div className="w-16 h-16 bg-[var(--seligo-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                    <History className="w-8 h-8 text-[var(--seligo-primary)]" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 mb-2">No more items</h3>
 
-                <p className="text-slate-500 text-sm mb-6">
-                  You’ve reached the end of available items for these interests.
-                </p>
+                  <p className="text-slate-500 text-sm mb-5">
+                    You’ve reached the end for these interests.
+                  </p>
 
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setView("interests")}
-                    className="w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-bold shadow-lg transition-colors"
-                  >
-                    Change interests
-                  </button>
-                  <button
-                    onClick={handleResetData}
-                    className="w-full py-4 bg-slate-100 text-slate-900 rounded-2xl font-bold hover:bg-slate-200 transition-colors"
-                  >
-                    Reset passes
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setView("interests")}
+                      className="w-full py-4 text-white rounded-2xl font-extrabold transition-colors"
+                      style={{ background: "var(--seligo-cta)" }}
+                    >
+                      Change interests
+                    </button>
+                    <button
+                      onClick={handleResetData}
+                      className="w-full py-4 bg-slate-100 text-slate-900 rounded-2xl font-extrabold hover:bg-slate-200 transition-colors"
+                    >
+                      Reset passes
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
+          </Screen>
         )}
 
         {/* Product Details Modal Overlay */}
         {selectedProduct && (
-          <div className={`${SCREEN} bg-white z-[100] flex flex-col animate-in fade-in slide-in-from-bottom-10 duration-300 overflow-y-auto no-scrollbar`}>
-            <div className="relative aspect-[4/5] w-full shrink-0">
-              <img src={selectedProduct.imageUrl} className="w-full h-full object-cover" alt={selectedProduct.name} />
-              <button 
-                type="button"
-                onClick={() => setSelectedProduct(null)} 
-                className="absolute top-6 left-6 z-[260] pointer-events-auto p-3 rounded-2xl bg-[var(--seligo-cta)] text-white shadow-xl ring-1 ring-white/30 hover:bg-[#fb8b3a] active:scale-95 transition"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent pointer-events-none" />
-            </div>
+          <div className="fixed inset-0 z-[500]">
+            <button
+              className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+              aria-label="Close"
+              onClick={() => setSelectedProduct(null)}
+            />
 
-            <div className="px-8 pb-10 -mt-16 relative z-10">
-              <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 border border-slate-50">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--seligo-primary)] mb-1 block">{selectedProduct.brand}</span>
-                    <h2 className="text-3xl font-black text-slate-900 leading-tight">{selectedProduct.name}</h2>
+            <div
+              className="absolute left-0 right-0 bottom-0 mx-auto w-full max-w-md"
+              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="rounded-t-[2.5rem] bg-white shadow-2xl border border-slate-100 overflow-hidden">
+                <div className="pt-3 pb-2 flex justify-center">
+                  <div className="h-1.5 w-12 rounded-full bg-slate-200" />
+                </div>
+
+                <div className="relative h-60 bg-slate-100">
+                  <img
+                    src={selectedProduct.imageUrl}
+                    alt={selectedProduct.name}
+                    className="absolute inset-0 w-full h-full object-contain bg-slate-100"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/0 to-transparent" />
+
+                  <button
+                    onClick={() => setSelectedProduct(null)}
+                    className="absolute top-4 left-4 h-10 w-10 rounded-2xl bg-white/85 backdrop-blur-xl border border-white/40 flex items-center justify-center"
+                    aria-label="Back"
+                  >
+                    <ArrowLeft className="h-5 w-5 text-slate-900" />
+                  </button>
+
+                  <div className="absolute bottom-4 right-4 px-3 py-2 rounded-2xl bg-black/45 backdrop-blur-xl text-white font-black">
+                    ${Number(selectedProduct.price || 0).toFixed(2)}
                   </div>
-                  <div className="text-3xl font-black text-[var(--seligo-accent)]">${selectedProduct.price}</div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {selectedProduct.tags.map(tag => (
-                    <span key={tag} className="px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border border-slate-100">
-                      <Tag className="w-3 h-3" /> {tag}
-                    </span>
-                  ))}
+                <div className="max-h-[52vh] overflow-y-auto no-scrollbar px-6 pb-28 overscroll-contain">
+                  <div className="pt-4">
+                    <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-slate-400">
+                      {selectedProduct.brand || "Seligo.AI"}
+                    </div>
+                    <div className="mt-1 text-2xl font-extrabold text-slate-900 leading-tight">
+                      {selectedProduct.name}
+                    </div>
+                  </div>
+
+                  {Array.isArray(selectedProduct.tags) && selectedProduct.tags.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {selectedProduct.tags.slice(0, 10).map((t: string) => (
+                        <span
+                          key={t}
+                          className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedProduct.description && (
+                    <div className="mt-4 text-[13px] text-slate-600 leading-relaxed">
+                      {selectedProduct.description}
+                    </div>
+                  )}
                 </div>
 
-                <div className="mb-8">
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-3">Description</h3>
-                  <p className="text-slate-600 leading-relaxed font-medium">{selectedProduct.description}</p>
-                </div>
+                <div
+                  className="sticky bottom-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-6 pt-4"
+                  style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => {
+                        handleAction("wishlist");
+                        setSelectedProduct(null);
+                      }}
+                      className="h-12 rounded-2xl bg-slate-100 text-slate-900 font-extrabold"
+                    >
+                      Save Item
+                    </button>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => handleAction('wishlist')}
-                    className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-[var(--seligo-primary)]/10 transition-all group"
-                  >
-                    <Bookmark className="w-8 h-8 text-slate-400 group-hover:text-[var(--seligo-primary)] mb-2" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Save Item</span>
-                  </button>
-                  <button 
-                    onClick={() => handleAction('cart')}
-                    className="flex flex-col items-center justify-center p-6 bg-[var(--seligo-cta)] rounded-3xl border border-orange-400 shadow-xl hover:bg-[#fb8b3a] transition-all group"
-                  >
-                    <ShoppingCart className="w-8 h-8 text-white mb-2" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white">Add to Bag</span>
-                  </button>
+                    <button
+                      onClick={() => {
+                        handleAction("cart");
+                        setSelectedProduct(null);
+                      }}
+                      className="h-12 rounded-2xl text-white font-extrabold"
+                      style={{ background: "var(--seligo-cta)" }}
+                    >
+                      Add to Bag
+                    </button>
+                  </div>
+
+                  <div className="mt-3 text-[11px] text-slate-400">
+                    Tip: Swiping refines your feed. Saving trains your style profile.
+                  </div>
                 </div>
               </div>
             </div>
@@ -1245,103 +1533,96 @@ const App: React.FC = () => {
         )}
 
         {view === 'profile' && (
-          <div className={`${SCREEN} bg-white z-[60] flex flex-col p-6 overflow-y-auto no-scrollbar animate-in slide-in-from-right duration-300`}>
-            {/* Top bar */}
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-3xl font-black text-slate-900">Insights</h2>
-                <div className="text-slate-500 text-sm mt-1">Your Seligo.AI style profile</div>
-              </div>
+          <Screen className="bg-white">
+            <PageHeader
+              title="Insights"
+              subtitle="Your Seligo.AI style profile"
+              onClose={() => setView("browsing")}
+            />
 
-              <button
-                onClick={() => setView('browsing')}
-                className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
-                aria-label="Close"
-              >
-                <X className="w-6 h-6 text-slate-600" />
-              </button>
-            </div>
-
-            {/* Vibe card */}
-            <div className="bg-[var(--seligo-primary)] rounded-[2.5rem] p-8 text-white shadow-2xl mb-6">
+            <div className="bg-[var(--seligo-primary)] rounded-[2.5rem] p-7 text-white shadow-xl mb-6">
               <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
-                  <BrainCircuit className="w-8 h-8" />
+                  <BrainCircuit className="w-7 h-7" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-white/80">Detected vibe</h3>
-                  <p className="text-2xl font-black">{userPrefs.persona.detectedVibe}</p>
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold uppercase tracking-[0.22em] text-white/80">
+                    Detected vibe
+                  </div>
+                  <div className="text-2xl font-black truncate">{userPrefs.persona.detectedVibe}</div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {userPrefs.persona.styleKeywords.slice(0, 6).map((k) => (
-                    <span
-                      key={k}
-                      className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold border border-white/20"
-                    >
-                      {k}
-                    </span>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {userPrefs.persona.styleKeywords.slice(0, 6).map((k) => (
+                  <span
+                    key={k}
+                    className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold border border-white/20"
+                  >
+                    {k}
+                  </span>
+                ))}
+              </div>
 
-                <div className="pt-4 border-t border-white/10 flex justify-between items-center text-sm font-bold">
-                  <span className="text-white/80 uppercase tracking-widest">Price sensitivity</span>
-                  <span className="uppercase">{userPrefs.persona.priceSensitivity}</span>
-                </div>
+              <div className="mt-5 pt-4 border-t border-white/10 flex justify-between items-center text-sm font-bold">
+                <span className="text-white/80 uppercase tracking-[0.22em] text-[11px]">
+                  Price sensitivity
+                </span>
+                <span className="uppercase">{userPrefs.persona.priceSensitivity}</span>
               </div>
             </div>
 
-            <div className="mb-6 bg-slate-50 border border-slate-100 rounded-3xl p-6">
+            <SectionCard className="mb-6 bg-white border-slate-100">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">Daily streak</div>
+                  <div className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                    Daily streak
+                  </div>
                   <div className="text-3xl font-black text-slate-900 mt-1">
                     {streak} <span className="text-base font-bold text-slate-500">days</span>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">Today</div>
+                  <div className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                    Today
+                  </div>
                   <div className="text-sm font-bold text-slate-700 mt-1">
                     {matchesToday} matches • {passesToday} passes • {savesToday} saved
                   </div>
                 </div>
               </div>
-            </div>
+            </SectionCard>
 
-            {/* Dating-app style “compatibility” row */}
-            <div className="grid grid-cols-3 gap-3 mb-8">
-              <div className="bg-slate-50 rounded-3xl p-5">
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <SectionCard className="bg-slate-50">
                 <Heart className="w-5 h-5 text-[var(--seligo-accent)] mb-2" />
-                <span className="block text-2xl font-black text-slate-900">{userPrefs.likedProducts.length}</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matches</span>
-              </div>
+                <div className="text-2xl font-black text-slate-900">{userPrefs.likedProducts.length}</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.22em]">Matches</div>
+              </SectionCard>
 
-              <div className="bg-slate-50 rounded-3xl p-5">
+              <SectionCard className="bg-slate-50">
                 <History className="w-5 h-5 text-slate-400 mb-2" />
-                <span className="block text-2xl font-black text-slate-900">{userPrefs.dislikedProducts.length}</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Passes</span>
-              </div>
+                <div className="text-2xl font-black text-slate-900">{userPrefs.dislikedProducts.length}</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.22em]">Passes</div>
+              </SectionCard>
 
-              <div className="bg-slate-50 rounded-3xl p-5">
+              <SectionCard className="bg-slate-50">
                 <ShoppingBag className="w-5 h-5 text-[var(--seligo-cta)] mb-2" />
-                <span className="block text-2xl font-black text-slate-900">
+                <div className="text-2xl font-black text-slate-900">
                   {userPrefs.wishlist.length + userPrefs.cart.length}
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saved</span>
-              </div>
+                </div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.22em]">Saved</div>
+              </SectionCard>
             </div>
 
-            {/* Next picks (dating app vibe) */}
-            <div className="mb-8 bg-slate-50 border border-slate-100 rounded-3xl p-6">
-              <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Next picks</div>
+            <SectionCard className="mb-6">
+              <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400 mb-2">
+                Next picks
+              </div>
               <div className="text-slate-800 font-bold">
                 We’ll show you more of{" "}
-                <span className="text-[var(--seligo-primary)]">
-                  {liked[0] ? liked[0] : "your top styles"}
-                </span>
+                <span className="text-[var(--seligo-primary)]">{liked[0] ? liked[0] : "your top styles"}</span>
                 {liked[1] ? (
                   <>
                     {" "}and{" "}
@@ -1350,81 +1631,68 @@ const App: React.FC = () => {
                 ) : null}
                 .
               </div>
-              <div className="text-slate-500 text-sm mt-2">
-                Keep matching to refine your feed.
-              </div>
-            </div>
+              <div className="text-slate-500 text-sm mt-2">Keep matching to refine your feed.</div>
+            </SectionCard>
 
-            {/* Your Type */}
-            <div className="mb-8">
-              <h3 className="font-black text-lg mb-3 text-slate-900">Your Type</h3>
+            <div className="mb-6">
+              <div className="font-black text-lg mb-3 text-slate-900">Your Type</div>
               <div className="flex flex-wrap gap-2">
-                {liked.length ? liked.map((t) => (
-                  <span
-                    key={t}
-                    className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold"
-                  >
-                    {t}
-                  </span>
-                )) : (
-                  <span className="text-slate-400 italic text-sm">
-                    Match a few items to build your type.
-                  </span>
+                {liked.length ? (
+                  liked.map((t) => (
+                    <span key={t} className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold">
+                      {t}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-slate-400 italic text-sm">Match a few items to build your type.</span>
                 )}
               </div>
             </div>
 
-            {/* Your Spaces */}
-            <div className="mb-8">
-              <h3 className="font-black text-lg mb-3 text-slate-900">Your Spaces</h3>
+            <div className="mb-6">
+              <div className="font-black text-lg mb-3 text-slate-900">Your Spaces</div>
               <div className="flex flex-wrap gap-2">
-                {topRooms.length ? topRooms.map((t) => (
-                  <span
-                    key={t}
-                    className="px-4 py-2 bg-[var(--seligo-primary)]/10 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
-                  >
-                    {t}
-                  </span>
-                )) : (
+                {topRooms.length ? (
+                  topRooms.map((t) => (
+                    <span key={t} className="px-4 py-2 bg-[var(--seligo-primary)]/10 text-[var(--seligo-primary)] rounded-xl text-xs font-bold">
+                      {t}
+                    </span>
+                  ))
+                ) : (
                   <span className="text-slate-400 italic text-sm">No room preferences detected yet.</span>
                 )}
               </div>
             </div>
 
-            {/* Your Categories */}
-            <div className="mb-10">
-              <h3 className="font-black text-lg mb-3 text-slate-900">Your Categories</h3>
+            <div className="mb-8">
+              <div className="font-black text-lg mb-3 text-slate-900">Your Categories</div>
               <div className="flex flex-wrap gap-2">
-                {topCategories.length ? topCategories.map((t) => (
-                  <span
-                    key={t}
-                    className="px-4 py-2 bg-[var(--seligo-primary)]/10 text-[var(--seligo-primary)] rounded-xl text-xs font-bold"
-                  >
-                    {t}
-                  </span>
-                )) : (
+                {topCategories.length ? (
+                  topCategories.map((t) => (
+                    <span key={t} className="px-4 py-2 bg-[var(--seligo-primary)]/10 text-[var(--seligo-primary)] rounded-xl text-xs font-bold">
+                      {t}
+                    </span>
+                  ))
+                ) : (
                   <span className="text-slate-400 italic text-sm">No category preferences detected yet.</span>
                 )}
               </div>
             </div>
 
-            <div className="mb-12">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-black text-lg text-slate-900">Dealbreakers</h3>
-
+            <div className="mb-10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-black text-lg text-slate-900">Dealbreakers</div>
                 {blockedTags.length > 0 && (
                   <button
                     onClick={clearBlockedTags}
-                    className="text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-700"
+                    className="text-xs font-black uppercase tracking-[0.22em] text-slate-500 hover:text-slate-700"
                   >
                     Clear hidden
                   </button>
                 )}
               </div>
 
-              <div className="text-slate-500 text-sm mb-3">
-                Tap a tag to hide it from your feed.
-              </div>
+              <div className="text-slate-500 text-sm mb-3">Tap a tag to hide it from your feed.</div>
 
               <div className="flex flex-wrap gap-2">
                 {(userPrefs.persona.dislikedFeatures.length ? userPrefs.persona.dislikedFeatures : avoided).map((t) => {
@@ -1453,34 +1721,34 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* Actions */}
-            <div className="mt-auto pt-2">
+            <div className="mt-2 pt-4 border-t border-slate-100">
               <button
                 onClick={shareLink}
-                className="w-full py-4 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black mb-4"
+                className="w-full py-4 rounded-2xl text-white font-black"
+                style={{ background: "var(--seligo-cta)" }}
               >
                 Share Seligo.AI
               </button>
 
               <button
                 onClick={() => setHowOpen(true)}
-                className="w-full py-4 rounded-2xl bg-slate-100 text-slate-900 font-black mb-4"
+                className="w-full py-4 rounded-2xl bg-slate-100 text-slate-900 font-black mt-3"
               >
                 How it works
               </button>
 
               <button
                 onClick={handleResetData}
-                className="w-full py-5 bg-rose-50 text-rose-500 border border-rose-100 rounded-[2rem] font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors"
+                className="w-full py-4 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl font-black uppercase tracking-[0.22em] text-xs flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors mt-3"
               >
                 <RotateCcw className="w-4 h-4" /> Reset My Data
               </button>
             </div>
-          </div>
+          </Screen>
         )}
 
         {view === 'roomscan' && (
-          <div className={`${SCREEN} bg-slate-50 z-[60] overflow-hidden animate-in slide-in-from-right duration-300 flex flex-col min-h-0`}>
+          <div className="min-h-full bg-slate-50">
             <RoomScanPage
               onApply={applyRoomScan}
               picks={roomScanPicks.map(p => ({ product: p.product, rationale: p.rationale }))}
@@ -1498,28 +1766,35 @@ const App: React.FC = () => {
         )}
 
         {view === 'cart' && (
-          <div className={`${SCREEN} bg-white z-[60] flex flex-col animate-in slide-in-from-bottom duration-300`}>
-            <div className="p-6 flex justify-between items-center border-b border-slate-100">
-              <h2 className="text-2xl font-black">Shopping Bag</h2>
-              <button onClick={() => setView('browsing')} className="p-2 -mr-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-6 h-6" /></button>
-            </div>
-            
-            <div className="flex-grow overflow-y-auto no-scrollbar p-6">
+          <Screen className="bg-white">
+            <PageHeader
+              title="Shopping Bag"
+              subtitle="Review and checkout your selected items."
+              onClose={() => setView("browsing")}
+            />
+
+            <div className="pb-28">
               {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 ? (
                 <div className="space-y-8">
                   {userPrefs.cart.length > 0 && (
                     <div>
-                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">In Bag</h3>
-                      <div className="space-y-6">
+                      <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400 mb-4">In Bag</div>
+                      <div className="space-y-5">
                         {userPrefs.cart.map((item, idx) => (
-                          <div key={`${item.id}-${idx}`} className="flex gap-4 group">
-                            <img src={item.imageUrl} className="w-20 h-20 rounded-2xl object-cover shadow-md" />
-                            <div className="flex-grow py-1">
-                              <h4 className="font-black text-slate-900 leading-tight">{item.name}</h4>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.brand}</p>
+                          <div key={`${item.id}-${idx}`} className="flex gap-4">
+                            <img src={item.imageUrl} className="w-20 h-20 rounded-2xl object-cover shadow-sm bg-slate-100" />
+                            <div className="flex-1 min-w-0 py-1">
+                              <div className="font-black text-slate-900 leading-tight line-clamp-2">{item.name}</div>
+                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.22em] truncate">
+                                {item.brand}
+                              </div>
                               <div className="flex justify-between items-center mt-2">
-                                <span className="font-black text-[var(--seligo-primary)]">${item.price}</span>
-                                <button onClick={() => setUserPrefs(prev => ({...prev, cart: prev.cart.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-rose-500 transition-colors p-1">
+                                <span className="font-black text-[var(--seligo-primary)]">${Number(item.price).toFixed(2)}</span>
+                                <button
+                                  onClick={() => setUserPrefs(prev => ({ ...prev, cart: prev.cart.filter((_, i) => i !== idx) }))}
+                                  className="text-slate-300 hover:text-rose-500 transition-colors p-2 -mr-2"
+                                  aria-label="Remove"
+                                >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
@@ -1532,29 +1807,27 @@ const App: React.FC = () => {
 
                   {userPrefs.wishlist.length > 0 && (
                     <div>
-                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Saved for Later</h3>
-                      <div className="space-y-6 opacity-80">
+                      <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400 mb-4">Saved for Later</div>
+                      <div className="space-y-5 opacity-90">
                         {userPrefs.wishlist.map((item, idx) => (
                           <div key={`${item.id}-${idx}-wish`} className="flex gap-4">
-                            <img src={item.imageUrl} className="w-16 h-16 rounded-xl object-cover grayscale-[20%]" />
-                            <div className="flex-grow py-1">
-                              <h4 className="font-bold text-slate-800 text-sm">{item.name}</h4>
+                            <img src={item.imageUrl} className="w-16 h-16 rounded-xl object-cover bg-slate-100" />
+                            <div className="flex-1 min-w-0 py-1">
+                              <div className="font-bold text-slate-800 text-sm line-clamp-2">{item.name}</div>
                               <div className="flex justify-between items-center mt-1">
-                                <span className="font-bold text-slate-500 text-xs">${item.price}</span>
-                                <div className="flex gap-3">
+                                <span className="font-bold text-slate-500 text-xs">${Number(item.price).toFixed(2)}</span>
+                                <div className="flex items-center gap-3">
                                   <button
                                     onClick={() => {
                                       const itemToMove = userPrefs.wishlist[idx];
                                       if (!itemToMove) return;
 
-                                      // update local state
                                       setUserPrefs((prev) => ({
                                         ...prev,
                                         wishlist: prev.wishlist.filter((_, i) => i !== idx),
                                         cart: [...prev.cart, itemToMove],
                                       }));
 
-                                      // persist + analytics (fire-and-forget)
                                       void Firestore.saveSwipe({
                                         productId: itemToMove.id,
                                         direction: "right",
@@ -1567,11 +1840,17 @@ const App: React.FC = () => {
                                         source: "bag_move_to_cart",
                                       }).catch(console.warn);
                                     }}
-                                    className="text-[var(--seligo-primary)] font-black text-[10px] uppercase tracking-widest hover:underline"
+                                    className="text-[var(--seligo-primary)] font-black text-[10px] uppercase tracking-[0.22em] hover:underline"
                                   >
                                     Move to Bag
                                   </button>
-                                  <button onClick={() => setUserPrefs(prev => ({...prev, wishlist: prev.wishlist.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-rose-500 transition-colors"><X className="w-3 h-3" /></button>
+                                  <button
+                                    onClick={() => setUserPrefs(prev => ({ ...prev, wishlist: prev.wishlist.filter((_, i) => i !== idx) }))}
+                                    className="text-slate-300 hover:text-rose-500 transition-colors"
+                                    aria-label="Remove"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -1582,32 +1861,40 @@ const App: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="text-center py-24 text-slate-400">
-                  <ShoppingBag className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                  <p className="font-bold">Your bag is empty.</p>
+                <div className="min-h-[52vh] flex flex-col items-center justify-center text-slate-400">
+                  <ShoppingBag className="h-10 w-10 opacity-30" />
+                  <div className="mt-3 font-semibold text-slate-500">Your bag is empty.</div>
+                  <div className="text-sm text-slate-400 mt-1">Add items from Explore to checkout.</div>
                 </div>
               )}
             </div>
 
-            <div className="p-8 border-t border-slate-100 bg-white">
-               <div className="flex justify-between items-center mb-6">
-                  <span className="font-bold text-slate-400 uppercase tracking-widest text-xs">Subtotal</span>
-                  <span className="text-3xl font-black text-slate-900">${userPrefs.cart.reduce((s, i) => s + i.price, 0).toFixed(2)}</span>
-               </div>
-               <button
-                 onClick={() => {
-                   setLeadEmail("");
-                   setLeadError("");
-                   setLeadStatus("idle");
-                   setShowCheckout(true);
-                 }}
-                 className="w-full py-5 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-[2rem] font-black text-xl shadow-2xl transition-all active:scale-95 disabled:opacity-50"
-                 disabled={userPrefs.cart.length === 0}
-               >
-                 Checkout
-               </button>
+            <div
+              className="sticky bottom-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 pt-4"
+              style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+            >
+              <div className="flex justify-between items-end mb-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Subtotal</div>
+                <div className="text-3xl font-black text-slate-900">
+                  ${userPrefs.cart.reduce((s, i) => s + Number(i.price || 0), 0).toFixed(2)}
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setLeadEmail("");
+                  setLeadError("");
+                  setLeadStatus("idle");
+                  setShowCheckout(true);
+                }}
+                className="w-full rounded-2xl py-4 font-extrabold text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: "var(--seligo-cta)" }}
+                disabled={userPrefs.cart.length === 0}
+              >
+                Checkout
+              </button>
             </div>
-          </div>
+          </Screen>
         )}
       </main>
 
@@ -1626,29 +1913,47 @@ const App: React.FC = () => {
 
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
 
-      {/* Modern Navigation Bar */}
-      <nav className="shrink-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-between items-center z-[250]">
-        <button onClick={() => setView('browsing')} className={`flex flex-col items-center gap-1 transition-all ${view === 'browsing' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
-          <Compass className="w-6 h-6" />
-          <span className="text-[9px] font-black uppercase tracking-[0.2em]">Explore</span>
-        </button>
-        <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
-          <BrainCircuit className="w-6 h-6" />
-          <span className="text-[9px] font-black uppercase tracking-[0.2em]">Insights</span>
-        </button>
-        <button onClick={() => setView('roomscan')} className={`flex flex-col items-center gap-1 transition-all ${view === 'roomscan' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
-          <Scan className="w-6 h-6" />
-          <span className="text-[9px] font-black uppercase tracking-[0.2em]">RoomScan</span>
-        </button>
-        <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1 transition-all ${view === 'cart' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
-          <div className="relative">
-            <ShoppingBag className="w-6 h-6" />
-            {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--seligo-primary)] rounded-full border-2 border-white" />
-            )}
-          </div>
-          <span className="text-[9px] font-black uppercase tracking-[0.2em]">Bag</span>
-        </button>
+      {/* Bottom Navigation */}
+      <nav
+        className="sticky bottom-0 z-[300] bg-white/90 backdrop-blur-xl border-t border-slate-100"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="h-[4.75rem] px-6 flex items-center justify-between">
+          <NavItem
+            active={view === "browsing"}
+            label="Explore"
+            onClick={() => setView("browsing")}
+            icon={<Compass className="w-6 h-6" />}
+          />
+
+          <NavItem
+            active={view === "profile"}
+            label="Insights"
+            onClick={() => setView("profile")}
+            icon={<BrainCircuit className="w-6 h-6" />}
+          />
+
+          <NavItem
+            active={view === "roomscan"}
+            label="RoomScan"
+            onClick={() => setView("roomscan")}
+            icon={<Scan className="w-6 h-6" />}
+          />
+
+          <NavItem
+            active={view === "cart"}
+            label="Bag"
+            onClick={() => setView("cart")}
+            icon={
+              <div className="relative">
+                <ShoppingBag className="w-6 h-6" />
+                {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--seligo-primary)] rounded-full border-2 border-white" />
+                )}
+              </div>
+            }
+          />
+        </div>
       </nav>
       </div>
       </div>

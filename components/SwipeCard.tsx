@@ -121,69 +121,100 @@ const SwipeCard: React.FC<SwipeCardProps> = ({ product, onSwipe, onSelectAction,
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       style={{
-        transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${rotation}deg) scale(${isDragging ? 1.05 : 1})`,
-        transition: isDragging ? 'none' : 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease',
+        transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${rotation}deg) scale(${isDragging ? 1.02 : 1})`,
+        transition: isDragging
+          ? "none"
+          : "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease",
         touchAction: 'none',
-        cursor: isDragging ? 'grabbing' : 'grab'
+        cursor: isDragging ? 'grabbing' : 'grab',
+        willChange: "transform",
       }}
-      className={`relative w-full max-w-sm aspect-[3/4] bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.2)] overflow-hidden select-none touch-none
-        ${isSwiping ? 'opacity-0 scale-90' : 'opacity-100'}
-      `}
+      className={[
+        "relative w-full",
+        "max-w-[360px] sm:max-w-sm",
+        "aspect-[10/13]",
+        "bg-white rounded-[2.25rem]",
+        "shadow-[0_18px_45px_rgba(0,0,0,0.18)]",
+        "overflow-hidden select-none touch-none",
+        isSwiping ? "opacity-0 scale-95" : "opacity-100",
+      ].join(" ")}
     >
-      <img 
-        src={product.imageUrl} 
+      <img
+        src={product.imageUrl}
         alt={product.name}
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent pointer-events-none" />
-      
-      {/* Visual Cues */}
-      <div 
+
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent pointer-events-none" />
+
+      <div
         style={{ opacity: opacityLike }}
-        className="absolute top-12 left-10 border-4 border-[var(--seligo-accent)] rounded-2xl px-6 py-2 rotate-[-15deg] pointer-events-none z-20 bg-emerald-500/10 backdrop-blur-sm"
+        className="absolute top-6 left-6 border-2 border-[var(--seligo-accent)] rounded-xl px-4 py-2 rotate-[-12deg] pointer-events-none z-20 bg-emerald-500/10 backdrop-blur-sm"
       >
-        <span className="text-[var(--seligo-accent)] text-5xl font-black uppercase tracking-tighter">LIKE</span>
-      </div>
-      <div 
-        style={{ opacity: opacityNope }}
-        className="absolute top-12 right-10 border-4 border-rose-500 rounded-2xl px-6 py-2 rotate-[15deg] pointer-events-none z-20 bg-rose-500/10 backdrop-blur-sm"
-      >
-        <span className="text-rose-500 text-5xl font-black uppercase tracking-tighter">PASS</span>
+        <span className="text-[var(--seligo-accent)] text-3xl font-black uppercase tracking-tight">
+          LIKE
+        </span>
       </div>
 
-      {/* Content */}
-      <div className="absolute bottom-0 left-0 right-0 p-8 text-white pointer-events-none">
-        <div className="flex justify-between items-end mb-3">
-          <div className="max-w-[70%]">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--seligo-primary)] mb-1 block">
-              Seligo.AI
-            </span>
-            <h2 className="text-4xl leading-[1.0] font-extrabold line-clamp-2 drop-shadow-lg">{product.name}</h2>
-          </div>
-          <div className="text-2xl font-black text-[var(--seligo-accent)] mb-1 drop-shadow-lg">${product.price}</div>
+      <div
+        style={{ opacity: opacityNope }}
+        className="absolute top-6 right-6 border-2 border-rose-500 rounded-xl px-4 py-2 rotate-[12deg] pointer-events-none z-20 bg-rose-500/10 backdrop-blur-sm"
+      >
+        <span className="text-rose-500 text-3xl font-black uppercase tracking-tight">
+          PASS
+        </span>
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 px-6 pb-6 pt-4 text-white">
+        <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-[var(--seligo-primary)] mb-2">
+          Seligo.AI
         </div>
-        <p className="text-sm text-slate-300 font-medium line-clamp-2 mb-6 opacity-80">{product.description}</p>
-        
-        {/* Expanded Action Bar */}
-        <div className="flex flex-col gap-3 pointer-events-auto">
-          {/* Core Tinder Actions */}
-          <div className="flex justify-between items-center gap-4">
-            <button 
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); triggerSwipe('left'); }}
-              className="flex-1 py-4 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center hover:bg-rose-500/60 transition-all border border-white/20 active:scale-90"
-            >
-              <X className="w-8 h-8 text-white" />
-            </button>
-            <button 
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); triggerSwipe('right'); }}
-              className="flex-1 py-4 bg-[var(--seligo-cta)] rounded-2xl flex items-center justify-center hover:bg-[#fb8b3a] transition-all shadow-xl active:scale-90 border border-white/10"
-            >
-              <Heart className="w-8 h-8 text-white fill-current" />
-            </button>
+
+        <div className="flex items-end justify-between gap-3">
+          <h2 className="text-[28px] leading-[1.05] font-extrabold line-clamp-2 drop-shadow-md">
+            {product.name}
+          </h2>
+
+          <div className="shrink-0 text-[18px] font-black text-white/95 drop-shadow-md">
+            ${Number(product.price || 0).toFixed(2)}
           </div>
+        </div>
+
+        <p className="mt-2 text-[13px] text-white/75 font-medium line-clamp-2">
+          {product.description}
+        </p>
+
+        <div className="mt-4 flex gap-3 pointer-events-auto">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerSwipe("left");
+            }}
+            className="flex-1 h-12 rounded-2xl flex items-center justify-center bg-white/10 backdrop-blur-xl border border-white/15 hover:bg-rose-500/40 transition-all active:scale-95"
+            aria-label="Pass"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerSwipe("right");
+            }}
+            className="flex-1 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold border border-white/10 shadow-lg transition-all active:scale-95"
+            style={{ background: "var(--seligo-cta)" }}
+            aria-label="Like"
+          >
+            <Heart className="w-6 h-6 text-white fill-current" />
+          </button>
+        </div>
+
+        <div className="mt-3 text-[10px] font-extrabold uppercase tracking-[0.22em] text-white/55">
+          Swipe to refine • Tap for details
         </div>
       </div>
     </div>

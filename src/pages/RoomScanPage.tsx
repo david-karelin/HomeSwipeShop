@@ -296,18 +296,25 @@ export default function RoomScanPage({
     </div>
   );
 
+  const isStickyCTA = scanStatus !== "success";
+
   const FooterCTA = (
-    <div className="shrink-0 sticky bottom-0 border-t border-black/10 bg-white/80 backdrop-blur-xl px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <div
+      className={[
+        "shrink-0 border-t border-black/10 bg-white/80 backdrop-blur-xl px-4 pt-3 pb-4",
+        isStickyCTA ? "sticky bottom-0" : "",
+      ].join(" ")}
+    >
       {error && <div className="text-sm text-red-600 font-semibold mb-2">{error}</div>}
 
       <button
-        disabled={!canScan || loading || scanStatus === "success" || !modelReady}
-        onClick={runScan}
+        disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
+        onClick={scanStatus === "success" ? handleScanAgain : runScan}
         className="w-full rounded-2xl px-4 py-4 text-white font-extrabold disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-sm"
         style={{ background: "var(--seligo-cta)", opacity: 1 }}
       >
         {scanStatus === "success"
-          ? "Updated ✅"
+          ? "Scan again"
           : scanStatus === "error"
             ? "Retry Scan"
             : loading
@@ -328,7 +335,7 @@ export default function RoomScanPage({
   );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-h-0">
       <input
         ref={cameraRef}
         type="file"
@@ -346,8 +353,7 @@ export default function RoomScanPage({
         onChange={(e) => onPick(e.target.files?.[0])}
       />
 
-      <div className="mx-auto w-full max-w-md flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] space-y-4 min-h-0">
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-4 pb-[120px] space-y-4 min-h-0">
           {screen === "preview" ? (
             <>
               <div className="flex items-center gap-3">
@@ -449,17 +455,19 @@ export default function RoomScanPage({
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2">
-                <div
-                  className="h-10 w-10 rounded-2xl flex items-center justify-center"
-                  style={{ background: "var(--seligo-primary)" }}
-                >
-                  <Sparkles className="h-5 w-5 text-white" />
-                </div>
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-lg font-semibold leading-tight">RoomScan</div>
-                  <div className="text-xs text-black/60">Scan your space → we personalize picks instantly.</div>
+                  <div className="text-2xl font-extrabold text-slate-900 leading-tight">RoomScan</div>
+                  <div className="text-sm text-slate-500 mt-1">Scan your space → we personalize picks instantly.</div>
                 </div>
+                <button
+                  type="button"
+                  onClick={onGoExplore}
+                  className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5 text-slate-600" />
+                </button>
               </div>
 
               {ImageBlock}
@@ -684,10 +692,9 @@ export default function RoomScanPage({
               )}
             </>
           )}
-        </div>
-
-        {FooterCTA}
       </div>
+
+      {FooterCTA}
     </div>
   );
 }
