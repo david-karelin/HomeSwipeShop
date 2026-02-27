@@ -285,9 +285,10 @@ export default function RoomScanPage({
           />
         </button>
       ) : (
-        <div className="h-56 w-full flex flex-col items-center justify-center text-black/50">
-          <ImageIcon className="h-7 w-7" />
+        <div className="h-56 w-full flex flex-col items-center justify-center text-black/50 bg-gradient-to-b from-slate-50 to-slate-100 border border-dashed border-black/20">
+          <ImageIcon className="h-9 w-9 text-slate-500" />
           <div className="text-sm mt-1">Upload a room image (optional)</div>
+          <div className="text-[11px] mt-1 text-black/45">Take photo (recommended)</div>
         </div>
       )}
 
@@ -296,14 +297,14 @@ export default function RoomScanPage({
   );
 
   const FooterCTA = (
-    <div className="shrink-0 sticky bottom-0 border-t border-black/10 bg-white/80 backdrop-blur-xl px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <div className="shrink-0 sticky bottom-0 border-t border-black/10 bg-white/80 backdrop-blur-xl px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       {error && <div className="text-sm text-red-600 font-semibold mb-2">{error}</div>}
 
       <button
         disabled={!canScan || loading || scanStatus === "success" || !modelReady}
         onClick={runScan}
         className="w-full rounded-2xl px-4 py-4 text-white font-extrabold disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-sm"
-        style={{ background: "var(--seligo-cta)" }}
+        style={{ background: "var(--seligo-cta)", opacity: 1 }}
       >
         {scanStatus === "success"
           ? "Updated ✅"

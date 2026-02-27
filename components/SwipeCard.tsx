@@ -136,7 +136,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({ product, onSwipe, onSelectAction,
         alt={product.name}
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent pointer-events-none" />
       
       {/* Visual Cues */}
       <div 
@@ -159,7 +159,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({ product, onSwipe, onSelectAction,
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--seligo-primary)] mb-1 block">
               Seligo.AI
             </span>
-            <h2 className="text-3xl font-black leading-tight drop-shadow-lg">{product.name}</h2>
+            <h2 className="text-4xl leading-[1.0] font-extrabold line-clamp-2 drop-shadow-lg">{product.name}</h2>
           </div>
           <div className="text-2xl font-black text-[var(--seligo-accent)] mb-1 drop-shadow-lg">${product.price}</div>
         </div>

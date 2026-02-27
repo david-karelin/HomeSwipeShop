@@ -960,7 +960,7 @@ const App: React.FC = () => {
   // Views
   if (view === 'auth') {
     return (
-      <div className="min-h-screen bg-[var(--seligo-primary)] flex flex-col items-center justify-center p-6 text-white">
+      <div className="min-h-[100dvh] bg-[var(--seligo-primary)] flex flex-col items-center justify-center p-6 text-white">
         <div className="mb-12 text-center animate-in fade-in zoom-in duration-500">
           <img
             src={seligoLogo}
@@ -979,7 +979,7 @@ const App: React.FC = () => {
 
   if (view === 'interests') {
     return (
-      <div className="min-h-screen bg-slate-50 p-6 flex flex-col">
+      <div className="min-h-[100dvh] bg-slate-50 p-6 flex flex-col">
         <header className="mb-8">
           <h1 className="text-3xl font-black text-slate-900 mb-2">Feed the Algorithm</h1>
           <p className="text-slate-500">The ML engine uses your initial choices to build your base persona.</p>
@@ -1602,7 +1602,7 @@ const App: React.FC = () => {
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
 
       {/* Modern Navigation Bar */}
-      <nav className="shrink-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] flex justify-between items-center z-[250]">
+      <nav className="shrink-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-between items-center z-[250]">
         <button onClick={() => setView('browsing')} className={`flex flex-col items-center gap-1 transition-all ${view === 'browsing' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <Compass className="w-6 h-6" />
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Explore</span>
