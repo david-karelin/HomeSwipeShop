@@ -72,6 +72,13 @@ const CheckoutLinksModal: React.FC<Props> = ({
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
+    const prevent = (e: TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-modal-scroll='true']")) return;
+      e.preventDefault();
+    };
+    document.addEventListener("touchmove", prevent, { passive: false });
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -79,6 +86,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
 
     return () => {
       document.body.style.overflow = prev;
+      document.removeEventListener("touchmove", prevent as any);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -87,12 +95,12 @@ const CheckoutLinksModal: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-3 sm:p-4 select-none"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-hidden flex flex-col rounded-2xl bg-white shadow-2xl">
+      <div className="max-h-[92vh] w-full max-w-lg overflow-hidden flex flex-col rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl">
         {/* Header (always visible) */}
         <div className="shrink-0 p-4 border-b border-slate-100">
           <div className="flex items-start justify-between gap-4">
@@ -119,7 +127,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
         </div>
 
         {/* Scroll body (everything that can grow) */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4" data-modal-scroll="true">
           <div className="space-y-3">
             {cart.length > 0 ? (
               cart.map((p) => (

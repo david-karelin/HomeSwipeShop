@@ -5,6 +5,8 @@ import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
 import HowItWorksModal from './src/components/HowItWorksModal';
+import RoomScanPage from './src/pages/RoomScanPage';
+import type { RoomScanAnalysis } from './src/services/localRoomScan';
 import seligoLogo from './src/assets/seligo-logo-primary-0EA5E9.png';
 import { 
   Search, 
@@ -27,7 +29,8 @@ import {
   ShoppingCart,
   RotateCcw,
   Zap,
-  Activity
+  Activity,
+  Scan
 } from 'lucide-react';
 
 const MOCK_INTERESTS = [
@@ -73,6 +76,12 @@ type UndoEntry = {
 
 type LocalActivityKind = "match" | "pass" | "save" | "bag";
 type LocalActivity = { ts: number; kind: LocalActivityKind };
+
+type RoomScanPick = {
+  product: Product;
+  rationale: string[];
+  score: number;
+};
 
 const ACTIVITY_KEY = "seligo_activity_v1";
 
@@ -166,6 +175,9 @@ const INTEREST_IDS = new Set([
 
 const isVibeTag = (t: string) => VIBE_TAGS.has(t);
 const isRoomTag = (t: string) => ROOM_TAGS.has(t);
+const SCREEN =
+  "absolute inset-x-0 top-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))]";
+const SCREEN_CENTER = `${SCREEN} flex items-center justify-center`;
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppState>('auth');
@@ -186,6 +198,8 @@ const App: React.FC = () => {
   const [tagScores, setTagScores] = useState<TagScores>(() => loadTagScores());
   const [activityLog, setActivityLog] = useState<LocalActivity[]>(() => loadActivity());
   const [blockedTags, setBlockedTags] = useState<string[]>(() => loadBlockedTags());
+  const [roomScanPicks, setRoomScanPicks] = useState<RoomScanPick[]>([]);
+  const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [undoCount, setUndoCount] = useState(0);
   const swipedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
@@ -402,11 +416,17 @@ const App: React.FC = () => {
     }));
   };
 
-  const startDiscovery = async () => {
-    const interests = [...userPrefs.interests];
-    if (interests.length === 0) return;
+  type StartDiscoveryOpts = { navigate?: boolean };
+
+  const startDiscovery = async (
+    overrideInterests?: string[],
+    opts: StartDiscoveryOpts = {}
+  ): Promise<Product[]> => {
+    const interests = [...(overrideInterests ?? userPrefs.interests)];
+    if (interests.length === 0) return [];
 
     setIsLoading(true);
+    if (opts.navigate !== false) setView("discovering");
     try {
       setProducts([]);
       setCursor(null);
@@ -445,10 +465,13 @@ const App: React.FC = () => {
       setProducts(ranked);
       setCursor(nextCursor);
       setHasMore(more);
-      setView("browsing");
+
+      if (opts.navigate !== false) setView("browsing");
+      return ranked;
     } catch (e) {
       console.error("Firestore load failed:", e);
-      setView("interests");
+      if (opts.navigate !== false) setView("interests");
+      return [];
     } finally {
       setIsLoading(false);
     }
@@ -508,6 +531,337 @@ const App: React.FC = () => {
     // Optionally, auto-load more if needed
   };
 
+  const addUnique = (arr: Product[], p: Product) =>
+    arr.some(x => x.id === p.id) ? arr : [...arr, p];
+
+  const dismissRoomScanPick = (productId: string) => {
+    setRoomScanPicks(prev => prev.filter(p => p.product.id !== productId));
+  };
+
+  const addToWishlistFromRoomScan = (p: Product) => {
+    setUserPrefs(prev => ({
+      ...prev,
+      wishlist: addUnique(prev.wishlist, p),
+      likedProducts: addUnique(prev.likedProducts, p),
+      lastAction: "wishlist",
+    }));
+    bumpTags(p, +2);
+
+    void Firestore.logEvent({ type: "wishlist_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
+    void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "wishlist" }).catch(console.warn);
+
+    dismissRoomScanPick(p.id);
+  };
+
+  const addToCartFromRoomScan = (p: Product) => {
+    setUserPrefs(prev => ({
+      ...prev,
+      cart: addUnique(prev.cart, p),
+      likedProducts: addUnique(prev.likedProducts, p),
+      lastAction: "cart",
+    }));
+    bumpTags(p, +2);
+
+    void Firestore.logEvent({ type: "cart_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
+    void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "cart" }).catch(console.warn);
+
+    dismissRoomScanPick(p.id);
+  };
+
+  const norm = (s: any) => String(s ?? "").trim().toLowerCase();
+
+  const getDetectedObjects = (analysis: RoomScanAnalysis): string[] => {
+    const objs = analysis?.debug?.objects;
+    return Array.isArray(objs) ? objs.map(norm).filter(Boolean) : [];
+  };
+
+  const getPalette = (analysis: RoomScanAnalysis): string[] => {
+    const pal = analysis?.debug?.palette;
+    return Array.isArray(pal) ? pal.map(norm).filter(Boolean) : [];
+  };
+
+  const hasAny = (objs: string[], keys: string[]) => keys.some(k => objs.includes(norm(k)));
+
+  const intersects = (a: string[], b: string[]) => {
+    const sb = new Set(b.map(norm));
+    return a.map(norm).filter(x => sb.has(x));
+  };
+
+  const buildRationaleSmart = (p: Product, analysis: RoomScanAnalysis) => {
+    const objs = getDetectedObjects(analysis);
+    const palette = getPalette(analysis);
+
+    const pTags = Array.isArray(p.tags) ? p.tags.map(norm) : [];
+    const pCat = norm(p.category);
+
+    const vibe = (analysis.vibeTags || []).map(norm);
+    const recTags = (analysis.recommendedTags || []).map(norm);
+    const recCats = (analysis.recommendedCategories || []).map(norm);
+
+    const missingRug = !hasAny(objs, ["rug"]);
+    const missingPlant = !hasAny(objs, ["potted plant"]);
+    const missingLamp = !hasAny(objs, ["lamp"]);
+    const hasBed = hasAny(objs, ["bed"]);
+
+    const reasons: string[] = [];
+
+    if (analysis.roomType) reasons.push(`Made for a ${analysis.roomType.replace(/_/g, " ")} refresh.`);
+    else if (hasBed) reasons.push("Bedroom detected — optimizing for cozy + functional upgrades.");
+
+    if (missingRug && (pCat === "rugs" || pTags.includes("rug"))) {
+      reasons.push("No rug detected — adding one anchors the room and makes it feel warmer.");
+    }
+    if (missingPlant && (pCat === "plants" || pTags.includes("plant"))) {
+      reasons.push("No plants detected — greenery adds life + contrast without clutter.");
+    }
+    if (missingLamp && (pCat === "lighting" || pTags.includes("lamp") || pTags.includes("light"))) {
+      reasons.push("No lamp detected — warm lighting boosts the cozy vibe at night.");
+    }
+    if (hasBed && (pCat === "bedding" || pTags.includes("pillow") || pTags.includes("throw-pillows"))) {
+      reasons.push("Bed is the focal point — upgraded bedding/pillows give the biggest visual payoff.");
+    }
+    if (hasBed && (pCat === "wall_art" || pTags.includes("art") || pTags.includes("wall"))) {
+      reasons.push("Great above-bed upgrade — adds a focal point and makes the space feel finished.");
+    }
+
+    const tagHits = intersects(pTags, [...vibe, ...recTags]).slice(0, 3);
+    if (tagHits.length) reasons.push(`Matches your scan vibe: ${tagHits.join(", ")}.`);
+
+    const tealish = palette.some((h) => {
+      const hex = h.replace("#", "");
+      if (hex.length !== 6) return false;
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return g > r && b > r && g > 80 && b > 80;
+    });
+
+    if (tealish && (pCat === "lighting" || pTags.includes("warm") || pTags.includes("warm-lighting"))) {
+      reasons.push("Your room reads cool/teal — warm lighting balances it and feels more inviting.");
+    }
+
+    if (recCats.includes(pCat)) reasons.push("Direct match to categories your scan requested.");
+
+    if (!reasons.length) reasons.push("Strong overall fit based on your scan + preferences.");
+
+    return reasons.slice(0, 3);
+  };
+
+  const buildRoomScanPicks = (candidates: Product[], analysis: RoomScanAnalysis): RoomScanPick[] => {
+    const objs = getDetectedObjects(analysis);
+    const missingRug = !hasAny(objs, ["rug"]);
+    const missingPlant = !hasAny(objs, ["potted plant"]);
+    const missingLamp = !hasAny(objs, ["lamp"]);
+    const hasBed = hasAny(objs, ["bed"]);
+
+    const recCats = (analysis.recommendedCategories || []).map(norm);
+    const recTags = (analysis.recommendedTags || []).map(norm);
+    const vibeTags = (analysis.vibeTags || []).map(norm);
+
+    const alreadySaved = new Set([
+      ...userPrefs.cart.map(x => x.id),
+      ...userPrefs.wishlist.map(x => x.id),
+    ]);
+
+    const scored: RoomScanPick[] = candidates
+      .filter(p => !alreadySaved.has(p.id))
+      .map((p) => {
+        const pCat = norm(p.category);
+        const pTags = Array.isArray(p.tags) ? p.tags.map(norm) : [];
+
+        let score = scoreProduct(p) + (p.asin ? 500 : 0);
+
+        if (recCats.includes(pCat)) score += 250;
+
+        const tagHits = intersects(pTags, [...recTags, ...vibeTags]).length;
+        score += tagHits * 90;
+
+        if (missingRug && (pCat === "rugs" || pTags.includes("rug"))) score += 300;
+        if (missingPlant && (pCat === "plants" || pTags.includes("plant"))) score += 240;
+        if (missingLamp && (pCat === "lighting" || pTags.includes("lamp") || pTags.includes("light"))) score += 240;
+        if (hasBed && (pCat === "bedding" || pTags.includes("pillow") || pTags.includes("throw-pillows"))) score += 220;
+
+        return {
+          product: p,
+          score,
+          rationale: buildRationaleSmart(p, analysis),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length > 0) return scored.slice(0, 8);
+
+    const fallback = candidates
+      .slice(0, 6)
+      .map((product) => ({
+        product,
+        score: scoreProduct(product) + (product.asin ? 500 : 0),
+        rationale: buildRationaleSmart(product, analysis),
+      }));
+
+    return fallback;
+  };
+
+  type FetchOpts = {
+    interests: string[];
+    limit: number;
+    cursor: any;
+    ignoreSwiped?: boolean;
+  };
+
+  const fetchMoreProducts = async ({ interests, limit, cursor, ignoreSwiped = false }: FetchOpts) => {
+    const page = await Firestore.fetchProductsByInterestsPage(interests, limit, cursor);
+
+    const ranked = [...(page.items || [])].sort(
+      (a, b) => Number(!!b.asin) - Number(!!a.asin) || scoreProduct(b) - scoreProduct(a)
+    );
+
+    const filtered = ranked.filter((p) => {
+      if (isBlockedProduct(p)) return false;
+      if (!ignoreSwiped && swipedRef.current.has(p.id)) return false;
+      return true;
+    });
+
+    return { page, filtered };
+  };
+
+  const applyRoomScan = async (analysis: RoomScanAnalysis) => {
+    setView("roomscan");
+    setRoomScanPickStatus("loading");
+    setRoomScanPicks([]);
+
+    const alias: Record<string, string> = {
+      add_rug: "rugs",
+      add_plants: "plants",
+      wall_art: "wall_art",
+      livingroom: "seating",
+      living_room: "seating",
+      bedroom: "bedding",
+      kitchen: "kitchen_decor",
+      decor: "wall_art",
+      wall: "wall_art",
+      art: "wall_art",
+      lights: "lighting",
+      lamp: "lighting",
+      lamps: "lighting",
+      table: "tables",
+      chair: "seating",
+      sofa: "seating",
+      plant: "plants",
+      rug: "rugs",
+      mirror: "mirrors",
+      organization: "storage",
+    };
+
+    const toInterestId = (raw: string) => {
+      const key = String(raw || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+      if (INTEREST_IDS.has(key)) return key;
+      const mapped = alias[key] ?? "";
+      return INTEREST_IDS.has(mapped) ? mapped : null;
+    };
+
+    const scanInterests = [
+      ...(analysis.recommendedCategories || []),
+      ...(analysis.recommendedTags || []),
+    ]
+      .map(toInterestId)
+      .filter((x): x is string => Boolean(x));
+
+    setTagScores((prev) => {
+      const next = { ...prev };
+
+      for (const tag of [...(analysis.recommendedTags || []), ...(analysis.vibeTags || [])]) {
+        const key = String(tag || "").trim().toLowerCase();
+        if (!key) continue;
+        next[key] = (next[key] || 0) + 2;
+      }
+
+      for (const tag of analysis.avoidTags || []) {
+        const key = String(tag || "").trim().toLowerCase();
+        if (!key) continue;
+        next[key] = (next[key] || 0) - 2;
+      }
+
+      saveTagScores(next);
+      return next;
+    });
+
+    if ((analysis.avoidTags || []).length) {
+      setBlockedTags((prev) => {
+        const next = Array.from(
+          new Set([
+            ...prev,
+            ...(analysis.avoidTags || [])
+              .map((t) => String(t || "").trim().toLowerCase())
+              .filter(Boolean),
+          ])
+        );
+        saveBlockedTags(next);
+        return next;
+      });
+    }
+
+    let mergedInterests: string[] = [];
+    setUserPrefs((prev) => {
+      mergedInterests = Array.from(new Set([...(prev.interests || []), ...scanInterests])).slice(0, 10);
+
+      return {
+        ...prev,
+        interests: mergedInterests.length ? mergedInterests : prev.interests,
+        persona: {
+          ...prev.persona,
+          styleKeywords: Array.from(
+            new Set([...(analysis.vibeTags || []), ...(analysis.recommendedTags || []), ...prev.persona.styleKeywords])
+          ).slice(0, 10),
+        },
+      };
+    });
+
+    const interestsToUse = mergedInterests.length ? mergedInterests : userPrefs.interests;
+
+    const fetchCandidatesIgnoringSwipes = async (interests: string[], limit = 120) => {
+      let nextCursor: any = null;
+      let more = true;
+      let safety = 0;
+      const out: Product[] = [];
+
+      while (more && out.length < limit && safety < 6) {
+        const page = await Firestore.fetchProductsByInterestsPage(interests, 30, nextCursor);
+        nextCursor = page.cursor;
+        more = page.hasMore;
+
+        for (const p of page.items || []) {
+          if (!isBlockedProduct(p)) out.push(p);
+          if (out.length >= limit) break;
+        }
+
+        if (!page.items?.length) break;
+        safety++;
+      }
+
+      return out;
+    };
+
+    try {
+      const ranked = await startDiscovery(interestsToUse, { navigate: false });
+
+      const candidates = ranked.length ? ranked : await fetchCandidatesIgnoringSwipes(interestsToUse);
+
+      const picks = buildRoomScanPicks(candidates, analysis);
+
+      console.log("[RoomScan] interestsToUse:", interestsToUse);
+      console.log("[RoomScan] ranked:", ranked.length, "candidates:", candidates.length, "picks:", picks.length);
+
+      setRoomScanPicks(picks);
+      setRoomScanPickStatus("ready");
+      setView("roomscan");
+    } catch (e) {
+      console.error("applyRoomScan failed:", e);
+      setRoomScanPickStatus("error");
+      setView("roomscan");
+    }
+  };
+
   const subtotal = userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0);
 
   const submitLead = async () => {
@@ -549,22 +903,17 @@ const App: React.FC = () => {
     refineLockRef.current = true;
     setIsAlgorithmRunning(true);
     try {
-      const page = await Firestore.fetchProductsByInterestsPage(
-        userPrefs.interests,
-        20,
-        cursor
-      );
-      const ranked = [...page.items];
-      ranked.sort((a, b) => Number(!!b.asin) - Number(!!a.asin) || scoreProduct(b) - scoreProduct(a));
+      const { page, filtered } = await fetchMoreProducts({
+        interests: userPrefs.interests,
+        limit: 20,
+        cursor,
+        ignoreSwiped: false,
+      });
 
       setProducts(prev => {
         const seen = new Set(prev.map(p => p.id));
-        const unique = ranked
-          .filter(p => !seen.has(p.id))
-          .filter(p => !swipedRef.current.has(p.id));
-          
-        const filtered = unique.filter(p => !isBlockedProduct(p));
-        return [...prev, ...filtered];
+        const unique = filtered.filter(p => !seen.has(p.id));
+        return [...prev, ...unique];
       });
 
       setCursor(page.cursor);
@@ -600,6 +949,13 @@ const App: React.FC = () => {
     .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, 5)
     .map(([k]) => k);
+  const discoveryMessages = [
+    "Analyzing Interest Nodes...",
+    "Mapping Style Cartography...",
+    "Connecting to Product Catalog...",
+    "Finalizing Personalized Feed..."
+  ];
+  const overlayOpen = !!selectedProduct || showCheckout || howOpen;
 
   // Views
   if (view === 'auth') {
@@ -645,7 +1001,7 @@ const App: React.FC = () => {
           ))}
         </div>
         <button
-          onClick={startDiscovery}
+          onClick={() => startDiscovery()}
           disabled={userPrefs.interests.length < 1 || isLoading}
           className={`mt-4 w-full py-5 rounded-[2rem] font-bold text-lg flex items-center justify-center gap-3 transition-all ${
             userPrefs.interests.length >= 1 ? 'bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white shadow-2xl' : 'bg-slate-200 text-slate-400'
@@ -653,64 +1009,6 @@ const App: React.FC = () => {
         >
           {isLoading ? <Loader2 className="animate-spin" /> : <>Generate My Feed <Zap className="w-5 h-5" /></>}
         </button>
-      </div>
-    );
-  }
-
-  if (view === 'discovering') {
-    const discoveryMessages = [
-      "Analyzing Interest Nodes...",
-      "Mapping Style Cartography...",
-      "Connecting to Product Catalog...",
-      "Finalizing Personalized Feed..."
-    ];
-    
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center overflow-hidden">
-        {/* Animated Background Pulse */}
-        <div className="absolute inset-0 bg-[var(--seligo-primary)]/5 animate-pulse" />
-        
-        {/* AI Brain Graphic */}
-        <div className="relative mb-12">
-          <div className="absolute inset-0 bg-[var(--seligo-primary)] rounded-full blur-3xl opacity-20 animate-pulse" />
-          <div className="relative w-32 h-32 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 shadow-2xl">
-            <div className="absolute inset-0 border-t-2 border-[var(--seligo-primary)] rounded-full animate-spin duration-700" />
-            <BrainCircuit className="w-16 h-16 text-[var(--seligo-primary)] animate-pulse" />
-          </div>
-          
-          {/* Scanning Line Effect */}
-          <div className="absolute -left-12 -right-12 top-1/2 h-[1px] bg-gradient-to-r from-transparent via-[var(--seligo-primary)] to-transparent animate-[bounce_2s_infinite] opacity-50" />
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <h2 className="text-3xl font-black text-white tracking-tighter">AI Discovery Engine</h2>
-          <div className="flex flex-col items-center space-y-2">
-             <p className="text-[var(--seligo-primary)] font-mono text-sm uppercase tracking-[0.3em] h-6">
-               {discoveryMessages[discoveryStep]}
-             </p>
-             <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mt-4">
-                <div 
-                  className="h-full bg-[var(--seligo-primary)] transition-all duration-1000 ease-out" 
-                  style={{ width: `${(discoveryStep + 1) * 25}%` }} 
-                />
-             </div>
-          </div>
-          
-          <div className="pt-12 grid grid-cols-2 gap-3 max-w-xs mx-auto">
-             {userPrefs.interests.map((interestId, idx) => {
-               const interest = MOCK_INTERESTS.find(i => i.id === interestId);
-               return (
-                 <div key={interestId} className={`px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 animate-in fade-in slide-in-from-bottom duration-500`} style={{ animationDelay: `${idx * 200}ms` }}>
-                    <Activity className="w-3 h-3 text-[var(--seligo-accent)]" /> {interest?.label}
-                 </div>
-               )
-             })}
-          </div>
-        </div>
-
-        <div className="absolute bottom-12 left-0 right-0 text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">
-           Personalizing your style experience...
-        </div>
       </div>
     );
   }
@@ -760,8 +1058,64 @@ const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden">
+        {view === "discovering" && (
+          <div className={`${SCREEN} bg-slate-900 overflow-hidden`}>
+            {/* Animated Background Pulse */}
+            <div className="absolute inset-0 bg-[var(--seligo-primary)]/5 animate-pulse" />
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+              {/* AI Brain Graphic */}
+              <div className="relative mb-12">
+                <div className="absolute inset-0 bg-[var(--seligo-primary)] rounded-full blur-3xl opacity-20 animate-pulse" />
+                <div className="relative w-32 h-32 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 shadow-2xl">
+                  <div className="absolute inset-0 border-t-2 border-[var(--seligo-primary)] rounded-full animate-spin duration-700" />
+                  <BrainCircuit className="w-16 h-16 text-[var(--seligo-primary)] animate-pulse" />
+                </div>
+
+                {/* Scanning Line Effect */}
+                <div className="absolute -left-12 -right-12 top-1/2 h-[1px] bg-gradient-to-r from-transparent via-[var(--seligo-primary)] to-transparent animate-[bounce_2s_infinite] opacity-50" />
+              </div>
+
+              <div className="relative z-10 space-y-6">
+                <h2 className="text-3xl font-black text-white tracking-tighter">AI Discovery Engine</h2>
+
+                <div className="flex flex-col items-center space-y-2">
+                  <p className="text-[var(--seligo-primary)] font-mono text-sm uppercase tracking-[0.3em] h-6">
+                    {discoveryMessages[discoveryStep]}
+                  </p>
+                  <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mt-4">
+                    <div
+                      className="h-full bg-[var(--seligo-primary)] transition-all duration-1000 ease-out"
+                      style={{ width: `${(discoveryStep + 1) * 25}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-12 grid grid-cols-2 gap-3 max-w-xs mx-auto">
+                  {userPrefs.interests.map((interestId, idx) => {
+                    const interest = MOCK_INTERESTS.find(i => i.id === interestId);
+                    return (
+                      <div
+                        key={interestId}
+                        className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 animate-in fade-in slide-in-from-bottom duration-500"
+                        style={{ animationDelay: `${idx * 200}ms` }}
+                      >
+                        <Activity className="w-3 h-3 text-[var(--seligo-accent)]" /> {interest?.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="absolute bottom-10 left-0 right-0 text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">
+                Personalizing your style experience...
+              </div>
+            </div>
+          </div>
+        )}
+
         {view === 'browsing' && (
-          <div className="absolute inset-0 p-6 flex items-center justify-center">
+          <div className={`${SCREEN_CENTER} p-6 ${overlayOpen ? 'pointer-events-none' : ''}`}>
             {currentIndex < products.length ? (
               <div className="w-full flex flex-col items-center">
                  <SwipeCard 
@@ -808,7 +1162,7 @@ const App: React.FC = () => {
 
         {/* Product Details Modal Overlay */}
         {selectedProduct && (
-          <div className="absolute inset-0 bg-white z-[100] flex flex-col animate-in fade-in slide-in-from-bottom-10 duration-300 overflow-y-auto no-scrollbar">
+          <div className={`${SCREEN} bg-white z-[100] flex flex-col animate-in fade-in slide-in-from-bottom-10 duration-300 overflow-y-auto no-scrollbar`}>
             <div className="relative aspect-[4/5] w-full shrink-0">
               <img src={selectedProduct.imageUrl} className="w-full h-full object-cover" alt={selectedProduct.name} />
               <button 
@@ -821,7 +1175,7 @@ const App: React.FC = () => {
               <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent pointer-events-none" />
             </div>
 
-            <div className="px-8 pb-32 -mt-16 relative z-10">
+            <div className="px-8 pb-10 -mt-16 relative z-10">
               <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 border border-slate-50">
                 <div className="flex justify-between items-start mb-6">
                   <div>
@@ -866,7 +1220,7 @@ const App: React.FC = () => {
         )}
 
         {view === 'profile' && (
-          <div className="absolute inset-0 bg-white z-[60] flex flex-col p-6 overflow-y-auto no-scrollbar animate-in slide-in-from-right duration-300">
+          <div className={`${SCREEN} bg-white z-[60] flex flex-col p-6 overflow-y-auto no-scrollbar animate-in slide-in-from-right duration-300`}>
             {/* Top bar */}
             <div className="flex justify-between items-center mb-8">
               <div>
@@ -1100,8 +1454,26 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {view === 'roomscan' && (
+          <div className={`${SCREEN} bg-slate-50 z-[60] overflow-hidden animate-in slide-in-from-right duration-300 flex flex-col min-h-0`}>
+            <RoomScanPage
+              onApply={applyRoomScan}
+              picks={roomScanPicks.map(p => ({ product: p.product, rationale: p.rationale }))}
+              pickStatus={roomScanPickStatus}
+              onSavePick={addToWishlistFromRoomScan}
+              onBagPick={addToCartFromRoomScan}
+              onGoExplore={() => setView("browsing")}
+              onDismissPick={dismissRoomScanPick}
+              onScanAgain={() => {
+                setRoomScanPicks([]);
+                setRoomScanPickStatus("idle");
+              }}
+            />
+          </div>
+        )}
+
         {view === 'cart' && (
-          <div className="absolute inset-0 bg-white z-[60] flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className={`${SCREEN} bg-white z-[60] flex flex-col animate-in slide-in-from-bottom duration-300`}>
             <div className="p-6 flex justify-between items-center border-b border-slate-100">
               <h2 className="text-2xl font-black">Shopping Bag</h2>
               <button onClick={() => setView('browsing')} className="p-2 -mr-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-6 h-6" /></button>
@@ -1230,7 +1602,7 @@ const App: React.FC = () => {
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
 
       {/* Modern Navigation Bar */}
-      <nav className="shrink-0 sticky bottom-0 relative bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-[250]">
+      <nav className="shrink-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] flex justify-between items-center z-[250]">
         <button onClick={() => setView('browsing')} className={`flex flex-col items-center gap-1 transition-all ${view === 'browsing' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <Compass className="w-6 h-6" />
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Explore</span>
@@ -1238,6 +1610,10 @@ const App: React.FC = () => {
         <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <BrainCircuit className="w-6 h-6" />
           <span className="text-[9px] font-black uppercase tracking-[0.2em]">Insights</span>
+        </button>
+        <button onClick={() => setView('roomscan')} className={`flex flex-col items-center gap-1 transition-all ${view === 'roomscan' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
+          <Scan className="w-6 h-6" />
+          <span className="text-[9px] font-black uppercase tracking-[0.2em]">RoomScan</span>
         </button>
         <button onClick={() => setView('cart')} className={`flex flex-col items-center gap-1 transition-all ${view === 'cart' ? 'text-[var(--seligo-primary)] scale-110' : 'text-slate-300'}`}>
           <div className="relative">

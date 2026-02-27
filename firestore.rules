@@ -12,6 +12,20 @@ service cloud.firestore {
       match /swipes/{swipeId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      match /roomScans/{scanId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        allow create: if request.auth != null && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(["status","roomText","createdAt","updatedAt","imagePath","imageUrl"])
+          && request.resource.data.status == "processing"
+          && request.resource.data.roomText is string;
+
+        allow update: if request.auth != null && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(["roomText","updatedAt","imagePath","imageUrl"]);
+
+        allow delete: if false;
+      }
     }
 
     match /leads/{leadId} {
