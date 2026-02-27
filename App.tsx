@@ -204,7 +204,28 @@ const App: React.FC = () => {
   const swipedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
   const refineLockRef = useRef(false);
+  const headerRef = useRef<HTMLDivElement>(null);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+
+    const set = () => {
+      const height = el.getBoundingClientRect().height;
+      el.parentElement?.style.setProperty("--seligo-header-h", `${height}px`);
+    };
+
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    window.addEventListener("resize", set);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", set);
+    };
+  }, []);
 
   const logLocalActivity = (kind: LocalActivityKind) => {
     setActivityLog((prev) => {
@@ -1018,7 +1039,11 @@ const App: React.FC = () => {
       <div className="w-full max-w-md h-[100dvh] sm:h-[min(100dvh,900px)] rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200 bg-slate-50">
       <div className="h-full flex flex-col">
       {/* Header */}
-      <header className="shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl z-[250] flex justify-between items-center border-b border-slate-100">
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-[250] shrink-0 px-6 py-5 bg-white/90 backdrop-blur-xl flex justify-between items-center border-b border-slate-100"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}
+      >
         <div className="flex items-center gap-3">
           <div className="relative">
             <img src={seligoLogo} alt="Seligo.AI" className="w-10 h-10 rounded-xl object-cover shadow-lg" />
@@ -1057,7 +1082,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 relative overflow-hidden">
+      <main className="flex-1 relative overflow-hidden" style={{ paddingTop: "var(--seligo-header-h, 96px)" }}>
         {view === "discovering" && (
           <div className={`${SCREEN} bg-slate-900 overflow-hidden`}>
             {/* Animated Background Pulse */}
