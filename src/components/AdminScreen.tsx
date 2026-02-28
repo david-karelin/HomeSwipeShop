@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { db, auth, ensureUser } from "../../firestoreService";
+import { collection, doc, getDoc, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
+import { db, ensureUser } from "../../firestoreService";
 
 type EventType =
   | "session_start"
@@ -99,8 +99,6 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     return Timestamp.fromDate(d);
   }, []);
 
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
   const refresh = async () => {
     setLoading(true);
     setError(null);
@@ -108,23 +106,16 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     try {
       await ensureUser();
 
-      await auth.currentUser?.getIdToken(true);
-      await sleep(250);
-
       try {
-        const map = await fetchAllStatsSince(since, TYPES);
-        setStats(map);
-        return;
+        const testId = "09joXcy2X5Kzm72jMNc3";
+        const one = await getDoc(doc(db, "events", testId));
+        console.log("[ADMIN PROBE] getDoc OK:", one.exists(), "id:", testId);
       } catch (e: any) {
-        if (e?.code === "permission-denied") {
-          await auth.currentUser?.getIdToken(true);
-          await sleep(800);
-          const map = await fetchAllStatsSince(since, TYPES);
-          setStats(map);
-          return;
-        }
-        throw e;
+        console.log("[ADMIN PROBE] getDoc FAILED:", e?.code, e?.message);
       }
+
+      setLoading(false);
+      return;
     } catch (e: any) {
       setError(e?.message ?? "Failed to load metrics.");
     } finally {
