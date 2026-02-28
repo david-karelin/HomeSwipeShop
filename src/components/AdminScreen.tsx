@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { db, ensureUser } from "../../firestoreService";
+import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
+import { db, auth, ensureUser } from "../../firestoreService";
 
 type EventType =
   | "session_start"
@@ -99,19 +99,32 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     return Timestamp.fromDate(d);
   }, []);
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   const refresh = async () => {
     setLoading(true);
     setError(null);
+
     try {
       await ensureUser();
 
-      const testId = "09joXcy2X5Kzm72jMNc3";
-      const snap = await getDoc(doc(db, "events", testId));
+      await auth.currentUser?.getIdToken(true);
+      await sleep(250);
 
-      console.log("[ADMIN DEBUG] getDoc allowed?", snap.exists(), "id:", testId);
-
-      setLoading(false);
-      return;
+      try {
+        const map = await fetchAllStatsSince(since, TYPES);
+        setStats(map);
+        return;
+      } catch (e: any) {
+        if (e?.code === "permission-denied") {
+          await auth.currentUser?.getIdToken(true);
+          await sleep(800);
+          const map = await fetchAllStatsSince(since, TYPES);
+          setStats(map);
+          return;
+        }
+        throw e;
+      }
     } catch (e: any) {
       setError(e?.message ?? "Failed to load metrics.");
     } finally {
@@ -119,8 +132,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  // comment this out for the debug test:
-  // useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const s = (k: EventType) => stats[k]?.sessions ?? 0;
   const c = (k: EventType) => stats[k]?.count ?? 0;
