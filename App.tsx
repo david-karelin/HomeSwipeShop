@@ -365,6 +365,8 @@ const App: React.FC = () => {
   const refineLockRef = useRef(false);
   const prevViewRef = useRef(view);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
+  const isAdminParam = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("admin") === "1";
 
   const resetImpressions = () => {
     impressedRef.current = new Set();
@@ -385,11 +387,17 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("admin") === "1") {
-      goView("admin", "query_param");
+    if (isAdminParam) {
+      goView("admin", "admin_param");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (view === "admin" && !isAdminParam) {
+      goView("profile", "admin_blocked");
+    }
+  }, [view, isAdminParam]);
 
   useEffect(() => {
     const prev = prevViewRef.current;
@@ -1404,9 +1412,8 @@ const App: React.FC = () => {
   if (view === "terms") return <TermsScreen onBack={() => goView("profile", "legal_back")} />;
   if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "legal_back")} />;
   if (view === "admin") {
-    const ok = new URLSearchParams(window.location.search).get("admin") === "1";
-    if (!ok) return null;
-    return <AdminScreen onBack={() => goView("browsing", "admin_back")} />;
+    if (!isAdminParam) return null;
+    return <AdminScreen onBack={() => goView("profile", "admin_back")} />;
   }
 
   return (
