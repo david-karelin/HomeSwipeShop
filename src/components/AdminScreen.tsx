@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
 import { db, ensureUser } from "../../firestoreService";
+import { fetchRecentEvents, fmtCreatedAt, type AdminEventRow } from "../lib/adminEvents";
 
 type EventType =
   | "session_start"
@@ -47,8 +48,19 @@ const TYPES: EventType[] = [
 ];
 
 function pct(num: number, den: number) {
-  if (!den) return "—";
-  return `${Math.round((num / den) * 1000) / 10}%`;
+  if (!den || den <= 0) return "—";
+  const v = num / den;
+  if (!Number.isFinite(v)) return "—";
+  const capped = Math.min(1, Math.max(0, v));
+  return `${Math.round(capped * 1000) / 10}% (${num}/${den})`;
+}
+
+function pctOnly(num: number, den: number) {
+  if (!den || den <= 0) return "—";
+  const v = num / den;
+  if (!Number.isFinite(v)) return "—";
+  const capped = Math.min(1, Math.max(0, v));
+  return `${Math.round(capped * 1000) / 10}%`;
 }
 
 async function fetchAllStatsSince(since: Timestamp, types: string[]): Promise<Record<string, Stat>> {
@@ -92,6 +104,9 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Record<string, Stat>>({});
   const [error, setError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<AdminEventRow[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentErr, setRecentErr] = useState<string | null>(null);
 
   const since = useMemo(() => {
     const now = new Date();
@@ -117,6 +132,28 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function run() {
+      setRecentLoading(true);
+      setRecentErr(null);
+      try {
+        const rows = await fetchRecentEvents(50);
+        if (mounted) setRecent(rows);
+      } catch (e: any) {
+        if (mounted) setRecentErr(e?.message ?? "Failed to load recent events");
+      } finally {
+        if (mounted) setRecentLoading(false);
+      }
+    }
+
+    void run();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const s = (k: EventType) => stats[k]?.sessions ?? 0;
@@ -193,7 +230,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Buy click rate (buy_click / checkout_open)</span>
-            <span className="font-black text-slate-900">{pct(s("buy_click"), s("checkout_open"))}</span>
+            <span className="font-black text-slate-900">{pctOnly(s("buy_click"), s("checkout_open"))}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead rate (lead_submit / checkout_open)</span>
@@ -208,15 +245,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-600">Scan success (scan_success / session_start)</span>
-            <span className="font-black text-slate-900">{pct(s("scan_success"), s("session_start"))}</span>
+            <span className="font-black text-slate-900">{pctOnly(s("scan_success"), s("session_start"))}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Pick save rate (pick_save / pick_impression)</span>
-            <span className="font-black text-slate-900">{pct(s("pick_save"), s("pick_impression"))}</span>
+            <span className="font-black text-slate-900">{pctOnly(s("pick_save"), s("pick_impression"))}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Pick dismiss rate (pick_dismiss / pick_impression)</span>
-            <span className="font-black text-slate-900">{pct(s("pick_dismiss"), s("pick_impression"))}</span>
+            <span className="font-black text-slate-900">{pctOnly(s("pick_dismiss"), s("pick_impression"))}</span>
           </div>
         </div>
       </div>
@@ -227,7 +264,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-600">Apply rate (scan_apply / scan_success)</span>
-            <span className="font-black text-slate-900">{pct(s("scan_apply"), s("scan_success"))}</span>
+            <span className="font-black text-slate-900">{pctOnly(s("scan_apply"), s("scan_success"))}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Share rate (share_click / scan_apply)</span>
@@ -235,7 +272,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead from scan (lead_submit / scan_apply)</span>
-            <span className="font-black text-slate-900">{pct(s("lead_submit"), s("scan_apply"))}</span>
+            <span className="font-black text-slate-900">{pctOnly(s("lead_submit"), s("scan_apply"))}</span>
           </div>
         </div>
       </div>
@@ -249,6 +286,37 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
               <span className="font-black text-slate-900">{stats[t]?.count ?? 0}</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200">
+          <div className="font-semibold text-slate-900">Recent events (last 50)</div>
+          <div className="text-xs text-slate-500">This is the truth-table for what’s firing.</div>
+        </div>
+
+        <div className="p-4">
+          {recentLoading && <div className="text-sm text-slate-600">Loading…</div>}
+          {recentErr && <div className="text-sm text-red-600">{recentErr}</div>}
+
+          {!recentLoading && !recentErr && (
+            <div className="space-y-2">
+              {recent.map((ev) => (
+                <div key={ev.id} className="text-xs rounded-2xl border border-slate-100 p-3">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <span className="text-slate-500">{fmtCreatedAt(ev.createdAt)}</span>
+                    <span className="font-semibold text-slate-900">{ev.type ?? "—"}</span>
+                    <span className="text-slate-600">view:{ev.view ?? "—"}</span>
+                    <span className="text-slate-600">src:{ev.source ?? "—"}</span>
+                  </div>
+                  <div className="mt-1 text-slate-600 break-all">
+                    session:{ev.sessionId ?? "—"} · product:{ev.productId ?? "—"}
+                    {ev.meta?.url ? <> · url:{String(ev.meta.url)}</> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -341,6 +341,9 @@ const App: React.FC = () => {
   const adminEnabled =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("admin") === "1";
+  const openRoomscanEnabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("open") === "roomscan";
   const [view, setView] = useState<AppState>("auth");
   const [userPrefs, setUserPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
   const [products, setProducts] = useState<Product[]>([]);
@@ -392,6 +395,11 @@ const App: React.FC = () => {
       setView("admin");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("open") === "roomscan") setView("roomscan");
   }, []);
 
   useEffect(() => {
@@ -549,7 +557,7 @@ const App: React.FC = () => {
       setProducts(saved.currentFeed || []);
       setCurrentIndex(saved.feedIndex || 0);
 
-      if (adminEnabled) return;
+      if (adminEnabled || openRoomscanEnabled) return;
       
       if (saved.currentFeed && saved.currentFeed.length > 0) {
         setView('browsing');
@@ -557,7 +565,7 @@ const App: React.FC = () => {
         setView('interests');
       }
     }
-  }, [adminEnabled]);
+  }, [adminEnabled, openRoomscanEnabled]);
 
   useEffect(() => {
     setSelectedProduct(null);
@@ -1264,10 +1272,49 @@ const App: React.FC = () => {
     }
   };
 
+  function buildShareUrl() {
+    const u = new URL(window.location.href);
+    u.searchParams.set("utm_source", "share");
+    u.searchParams.set("utm_medium", "roomscan");
+    u.searchParams.set("utm_campaign", "viral");
+    u.searchParams.set("open", "roomscan");
+    return u.toString();
+  }
+
   const shareLink = async () => {
-    const url = window.location.href;
-    await navigator.clipboard.writeText(url);
-    alert("Link copied!");
+    const url = buildShareUrl();
+    let shared = false;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Seligo — RoomScan picks",
+          text: "Check out my curated picks 👇",
+          url,
+        });
+        shared = true;
+      }
+    } catch {
+      // user cancelled share, or share failed — fall back below
+    }
+
+    if (!shared) {
+      try {
+        await navigator.clipboard.writeText(url);
+        shared = true;
+        alert("Link copied!");
+      } catch {
+        alert("Couldn’t copy link. Please copy from the address bar.");
+        return;
+      }
+    }
+
+    await Firestore.logEvent({
+      type: "share_click",
+      view: "roomscan",
+      source: "roomscan_cleared",
+      meta: { url },
+    });
   };
 
   const refineRecommendations = async () => {
@@ -2078,7 +2125,15 @@ const App: React.FC = () => {
                   setLeadError("");
                   setLeadStatus("idle");
                   setShowCheckout(true);
-                  void Firestore.logEvent({ type: "checkout_open", source: "bag" }).catch(console.warn);
+                  void Firestore.logEvent({
+                    type: "checkout_open",
+                    view: "checkout",
+                    source: "bottom_nav_bag",
+                    meta: {
+                      subtotal,
+                      items: userPrefs.cart.length,
+                    },
+                  }).catch(console.warn);
                 }}
                 className="w-full rounded-2xl py-4 font-extrabold text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: "var(--seligo-cta)" }}

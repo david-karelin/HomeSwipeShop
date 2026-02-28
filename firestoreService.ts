@@ -30,8 +30,6 @@ export async function ensureUser() {
   }
 
   await user.getIdToken(true);
-
-  console.log("[SELIGO_UID_JSON]", JSON.stringify(user.uid));
   return user;
 }
 
@@ -321,9 +319,24 @@ export async function logEvent(payload: {
 
   const user = await ensureUser();
   const sessionId = getOrCreateSessionId();
-  const utm = getPersistedUtm();
-  const category = payload.meta?.category ?? null;
-  const price = payload.meta?.price ?? null;
+  const utmRaw = getPersistedUtm();
+  const utm =
+    utmRaw && typeof utmRaw === "object" && !Array.isArray(utmRaw) ? utmRaw : {};
+
+  const meta =
+    payload.meta && typeof payload.meta === "object" && !Array.isArray(payload.meta)
+      ? payload.meta
+      : {};
+
+  const needsPurchaseUrl =
+    payload.type === "buy_click" || payload.type === "checkout_item_open";
+  if (needsPurchaseUrl && !payload.purchaseUrl) {
+    console.warn("[logEvent] missing purchaseUrl for", payload.type, payload);
+    return;
+  }
+
+  const category = meta?.category ?? null;
+  const price = meta?.price ?? null;
 
   const base: any = {
     type: payload.type,
@@ -335,15 +348,19 @@ export async function logEvent(payload: {
     category,
     price,
     utm,
-    meta: payload.meta ?? {},
+    meta,
     createdAt: serverTimestamp(),
   };
 
-  if (payload.type === "buy_click" || payload.type === "checkout_item_open") {
-    if (payload.purchaseUrl) base.purchaseUrl = payload.purchaseUrl;
+  if (needsPurchaseUrl) {
+    base.purchaseUrl = payload.purchaseUrl;
   }
 
-  await addDoc(collection(db, "events"), base);
+  try {
+    await addDoc(collection(db, "events"), base);
+  } catch (e) {
+    console.warn("[logEvent] addDoc failed", e, base);
+  }
 }
 
 export async function logBuyClick(payload: {

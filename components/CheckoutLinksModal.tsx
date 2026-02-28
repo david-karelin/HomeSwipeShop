@@ -41,7 +41,28 @@ function getPurchaseUrl(p: Product): string {
   return url || buildAmazonSearchUrl(p);
 }
 
-function openInNewTab(url: string) {
+async function openWithTracking(url: string, payload: {
+  type: "buy_click" | "checkout_item_open";
+  view: string;
+  source: string;
+  productId: string;
+  category?: string;
+  price?: number;
+  purchaseUrl: string;
+}) {
+  await Promise.allSettled([
+    Firestore.logEvent({
+      type: payload.type,
+      view: payload.view,
+      source: payload.source,
+      productId: payload.productId,
+      purchaseUrl: payload.purchaseUrl,
+      meta: {
+        category: payload.category ?? "",
+        price: Number(payload.price ?? 0),
+      },
+    }),
+  ]);
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -49,26 +70,29 @@ async function handleBuy(product: Product) {
   const url = getPurchaseUrl(product);
   if (!url) return;
 
-  const meta = {
-    category: product.category ?? "",
-    tags: Array.isArray(product.tags) ? product.tags : [],
-    price: Number(product.price ?? 0),
-  };
+  await Promise.allSettled([
+    Firestore.logEvent({
+      type: "checkout_item_open",
+      view: "checkout",
+      source: "checkout_item",
+      productId: product.id,
+      purchaseUrl: url,
+      meta: {
+        category: product.category ?? "",
+        price: Number(product.price ?? 0),
+      },
+    }),
+  ]);
 
-  void Firestore.logEvent({
-    type: "checkout_item_open",
+  await openWithTracking(url, {
+    type: "buy_click",
+    view: "checkout",
+    source: "checkout_item",
     productId: product.id,
+    category: product.category,
+    price: Number(product.price ?? 0),
     purchaseUrl: url,
-    source: "checkout_modal",
-    view: "cart",
-    meta,
-  }).catch(console.warn);
-
-  void Firestore.logBuyClick({ productId: product.id, purchaseUrl: url, source: "checkout_modal" }).catch((e) => {
-    console.warn("logBuyClick failed", e);
   });
-
-  openInNewTab(url);
 }
 
 const CheckoutLinksModal: React.FC<Props> = ({
@@ -90,12 +114,12 @@ const CheckoutLinksModal: React.FC<Props> = ({
     const ok = await onSubmitLead();
     if (!ok) return;
 
-    void Firestore.logEvent({
+    await Firestore.logEvent({
       type: "lead_submit",
-      source: "checkout_modal",
-      view: "cart",
+      view: "checkout",
+      source: "lead_form",
       meta: { subtotal, items: cart.length },
-    }).catch(console.warn);
+    });
   };
 
   useEffect(() => {
