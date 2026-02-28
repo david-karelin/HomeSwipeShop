@@ -338,7 +338,10 @@ const DisclosureScreen = ({ onBack }: { onBack: () => void }) => (
 );
 
 const App: React.FC = () => {
-  const [view, setView] = useState<AppState>('auth');
+  const adminEnabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("admin") === "1";
+  const [view, setView] = useState<AppState>("auth");
   const [userPrefs, setUserPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
   const [products, setProducts] = useState<Product[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -365,8 +368,6 @@ const App: React.FC = () => {
   const refineLockRef = useRef(false);
   const prevViewRef = useRef(view);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
-  const isAdminParam = typeof window !== "undefined"
-    && new URLSearchParams(window.location.search).get("admin") === "1";
 
   const resetImpressions = () => {
     impressedRef.current = new Set();
@@ -387,17 +388,17 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isAdminParam) {
-      goView("admin", "admin_param");
+    if (adminEnabled) {
+      setView("admin");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (view === "admin" && !isAdminParam) {
+    if (view === "admin" && !adminEnabled) {
       goView("profile", "admin_blocked");
     }
-  }, [view, isAdminParam]);
+  }, [view, adminEnabled]);
 
   useEffect(() => {
     const prev = prevViewRef.current;
@@ -547,6 +548,8 @@ const App: React.FC = () => {
       setUserPrefs(saved);
       setProducts(saved.currentFeed || []);
       setCurrentIndex(saved.feedIndex || 0);
+
+      if (adminEnabled) return;
       
       if (saved.currentFeed && saved.currentFeed.length > 0) {
         setView('browsing');
@@ -554,7 +557,7 @@ const App: React.FC = () => {
         setView('interests');
       }
     }
-  }, []);
+  }, [adminEnabled]);
 
   useEffect(() => {
     setSelectedProduct(null);
@@ -1412,7 +1415,7 @@ const App: React.FC = () => {
   if (view === "terms") return <TermsScreen onBack={() => goView("profile", "legal_back")} />;
   if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "legal_back")} />;
   if (view === "admin") {
-    if (!isAdminParam) return null;
+    if (!adminEnabled) return <div className="p-6">Not authorized.</div>;
     return <AdminScreen onBack={() => goView("profile", "admin_back")} />;
   }
 
