@@ -111,26 +111,8 @@ const CheckoutLinksModal: React.FC<Props> = ({
   onSubmitLead,
 }) => {
   const handleLeadClick = async () => {
-    const ok = await onSubmitLead();
-    if (!ok) return;
-
-    await Firestore.logEvent({
-      type: "lead_submit",
-      view: "checkout",
-      source: "lead_form",
-      meta: { subtotal, items: cart.length },
-    });
+    await onSubmitLead();
   };
-
-  useEffect(() => {
-    if (!open) return;
-    void Firestore.logEvent({
-      type: "checkout_open",
-      source: "checkout_modal",
-      view: "cart",
-      meta: { items: cart.length, subtotal },
-    }).catch(console.warn);
-  }, [open]);
 
   // lock body scroll + close on Escape
   useEffect(() => {

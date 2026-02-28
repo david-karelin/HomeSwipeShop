@@ -368,6 +368,7 @@ const App: React.FC = () => {
   const swipedRef = useRef<Set<string>>(new Set());
   const impressedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
+  const roomScanImpressedRef = useRef<Set<string>>(new Set());
   const refineLockRef = useRef(false);
   const prevViewRef = useRef(view);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
@@ -756,8 +757,8 @@ const App: React.FC = () => {
     void Firestore.logEvent({
       type: "product_open",
       productId: currentProduct.id,
-      source: "feed_card",
-      view: "browsing",
+      source: "card_tap",
+      view: "feed",
       meta: {
         category: currentProduct.category ?? "",
         tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
@@ -807,7 +808,15 @@ const App: React.FC = () => {
   const addUnique = (arr: Product[], p: Product) =>
     arr.some(x => x.id === p.id) ? arr : [...arr, p];
 
-  const dismissRoomScanPick = (productId: string) => {
+  const dismissRoomScanPick = (productId: string, reason: string = "x") => {
+    void Firestore.logEvent({
+      type: "pick_dismiss",
+      view: "roomscan",
+      source: "roomscan_picks",
+      productId,
+      meta: { reason },
+    }).catch(console.warn);
+
     setRoomScanPicks(prev => prev.filter(p => p.product.id !== productId));
   };
 
@@ -820,11 +829,16 @@ const App: React.FC = () => {
     }));
     bumpTags(p, +2);
 
-    void Firestore.logEvent({ type: "pick_save", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
+    void Firestore.logEvent({
+      type: "pick_save",
+      view: "roomscan",
+      source: "roomscan_picks",
+      productId: p.id,
+    }).catch(console.warn);
     void Firestore.logEvent({ type: "wishlist_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "wishlist" }).catch(console.warn);
 
-    dismissRoomScanPick(p.id);
+    dismissRoomScanPick(p.id, "save");
   };
 
   const addToCartFromRoomScan = (p: Product) => {
@@ -839,7 +853,7 @@ const App: React.FC = () => {
     void Firestore.logEvent({ type: "cart_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "cart" }).catch(console.warn);
 
-    dismissRoomScanPick(p.id);
+    dismissRoomScanPick(p.id, "bag");
   };
 
   const norm = (s: any) => String(s ?? "").trim().toLowerCase();
@@ -1100,6 +1114,7 @@ const App: React.FC = () => {
     setView("roomscan");
     setRoomScanPickStatus("loading");
     setRoomScanPicks([]);
+    roomScanImpressedRef.current = new Set();
 
     const alias: Record<string, string> = {
       add_rug: "rugs",
@@ -1262,6 +1277,12 @@ const App: React.FC = () => {
         bagCount: userPrefs.cart.length,
         wishlistCount: userPrefs.wishlist.length,
       });
+      void Firestore.logEvent({
+        type: "lead_submit",
+        view: "checkout",
+        source: "lead_form",
+        meta: { subtotal, items: userPrefs.cart.length },
+      }).catch(console.warn);
       setLeadStatus("saved");
       return true;
     } catch (e) {
@@ -1369,6 +1390,25 @@ const App: React.FC = () => {
       },
     }).catch(console.warn);
   }, [view, currentIndex, products]);
+
+  useEffect(() => {
+    if (view !== "roomscan") return;
+
+    for (const pick of roomScanPicks) {
+      const productId = pick?.product?.id;
+      if (!productId) continue;
+      if (roomScanImpressedRef.current.has(productId)) continue;
+
+      roomScanImpressedRef.current.add(productId);
+      void Firestore.logEvent({
+        type: "pick_impression",
+        view: "roomscan",
+        source: "roomscan_picks",
+        productId,
+        meta: { score: pick.score },
+      }).catch(console.warn);
+    }
+  }, [view, roomScanPicks]);
 
   useEffect(() => {
     if (view !== "browsing") return;
@@ -2121,10 +2161,6 @@ const App: React.FC = () => {
 
               <button
                 onClick={() => {
-                  setLeadEmail("");
-                  setLeadError("");
-                  setLeadStatus("idle");
-                  setShowCheckout(true);
                   void Firestore.logEvent({
                     type: "checkout_open",
                     view: "checkout",
@@ -2134,6 +2170,11 @@ const App: React.FC = () => {
                       items: userPrefs.cart.length,
                     },
                   }).catch(console.warn);
+
+                  setLeadEmail("");
+                  setLeadError("");
+                  setLeadStatus("idle");
+                  setShowCheckout(true);
                 }}
                 className="w-full rounded-2xl py-4 font-extrabold text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: "var(--seligo-cta)" }}

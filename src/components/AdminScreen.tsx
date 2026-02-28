@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
 import { db, ensureUser } from "../../firestoreService";
 import { fetchRecentEvents, fmtCreatedAt, type AdminEventRow } from "../lib/adminEvents";
@@ -28,6 +28,17 @@ type Stat = {
   sessions: number;
 };
 
+type PairKey = `${string}|${string}`;
+
+type StatsState = {
+  byType: Record<string, Stat>;
+  pairSessions: Record<PairKey, number>;
+};
+
+function pairKey(num: string, den: string) {
+  return `${num}|${den}` as PairKey;
+}
+
 const TYPES: EventType[] = [
   "session_start",
   "card_impression",
@@ -55,15 +66,39 @@ function pct(num: number, den: number) {
   return `${Math.round(capped * 1000) / 10}% (${num}/${den})`;
 }
 
-function pctOnly(num: number, den: number) {
-  if (!den || den <= 0) return "—";
-  const v = num / den;
-  if (!Number.isFinite(v)) return "—";
-  const capped = Math.min(1, Math.max(0, v));
-  return `${Math.round(capped * 1000) / 10}%`;
-}
+const intersectionSize = (a: Set<string>, b: Set<string>) => {
+  if (!a.size || !b.size) return 0;
+  let n = 0;
+  const small = a.size <= b.size ? a : b;
+  const large = a.size <= b.size ? b : a;
+  for (const v of small) if (large.has(v)) n += 1;
+  return n;
+};
 
-async function fetchAllStatsSince(since: Timestamp, types: string[]): Promise<Record<string, Stat>> {
+const pairs = [
+  ["product_open", "card_impression"],
+  ["wishlist_add", "card_impression"],
+  ["cart_add", "card_impression"],
+  ["checkout_open", "cart_add"],
+  ["checkout_item_open", "checkout_open"],
+  ["buy_click", "checkout_open"],
+  ["lead_submit", "checkout_open"],
+  ["scan_success", "session_start"],
+  ["scan_apply", "scan_success"],
+  ["share_click", "scan_apply"],
+  ["lead_submit", "scan_apply"],
+  ["pick_save", "pick_impression"],
+  ["pick_dismiss", "pick_impression"],
+ ] as const;
+
+async function fetchAllStatsSince(
+  since: Timestamp,
+  types: string[],
+  pairs: ReadonlyArray<readonly [string, string]>
+): Promise<{
+  byType: Record<string, Stat>;
+  pairSessions: Record<PairKey, number>;
+}> {
   const allowed = new Set(types);
 
   const counts: Record<string, number> = {};
@@ -93,17 +128,27 @@ async function fetchAllStatsSince(since: Timestamp, types: string[]): Promise<Re
     if (sid) sessionSets[t].add(sid);
   });
 
-  const out: Record<string, Stat> = {};
+  const byType: Record<string, Stat> = {};
   for (const t of types) {
-    out[t] = { count: counts[t] ?? 0, sessions: sessionSets[t]?.size ?? 0 };
+    byType[t] = { count: counts[t] ?? 0, sessions: sessionSets[t]?.size ?? 0 };
   }
-  return out;
+
+  const pairSessions: Record<PairKey, number> = {};
+  for (const [numType, denType] of pairs) {
+    pairSessions[pairKey(numType, denType)] = intersectionSize(
+      sessionSets[numType] ?? new Set(),
+      sessionSets[denType] ?? new Set()
+    );
+  }
+
+  return { byType, pairSessions };
 }
 
 export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<Record<string, Stat>>({});
+  const [stats, setStats] = useState<StatsState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sanityLoggedRef = useRef(false);
   const [recent, setRecent] = useState<AdminEventRow[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentErr, setRecentErr] = useState<string | null>(null);
@@ -120,8 +165,8 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
 
     try {
       await ensureUser();
-      const map = await fetchAllStatsSince(since, TYPES);
-      setStats(map);
+      const res = await fetchAllStatsSince(since, TYPES, pairs);
+      setStats(res);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load metrics.");
     } finally {
@@ -156,8 +201,44 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     };
   }, []);
 
-  const s = (k: EventType) => stats[k]?.sessions ?? 0;
-  const c = (k: EventType) => stats[k]?.count ?? 0;
+  const byType = stats?.byType ?? {};
+  const pairSessions = stats?.pairSessions ?? ({} as Record<PairKey, number>);
+
+  const sess = (t: string) => byType[t]?.sessions ?? 0;
+  const ev = (t: string) => byType[t]?.count ?? 0;
+
+  function sessNum(num: string, den: string) {
+    return pairSessions[pairKey(num, den)] ?? 0;
+  }
+
+  const openRate     = pct(sessNum("product_open", "card_impression"), sess("card_impression"));
+  const saveRate     = pct(sessNum("wishlist_add", "card_impression"), sess("card_impression"));
+  const bagRate      = pct(sessNum("cart_add", "card_impression"), sess("card_impression"));
+  const checkoutRate = pct(sessNum("checkout_open", "cart_add"), sess("cart_add"));
+  const outboundRate = pct(sessNum("checkout_item_open", "checkout_open"), sess("checkout_open"));
+  const buyRate      = pct(sessNum("buy_click", "checkout_open"), sess("checkout_open"));
+  const leadRate     = pct(sessNum("lead_submit", "checkout_open"), sess("checkout_open"));
+
+  const scanSuccess  = pct(sessNum("scan_success", "session_start"), sess("session_start"));
+  const pickSave     = pct(sessNum("pick_save", "pick_impression"), sess("pick_impression"));
+  const pickDismiss  = pct(sessNum("pick_dismiss", "pick_impression"), sess("pick_impression"));
+
+  const applyRate    = pct(sessNum("scan_apply", "scan_success"), sess("scan_success"));
+  const shareRate    = pct(sessNum("share_click", "scan_apply"), sess("scan_apply"));
+  const leadFromScan = pct(sessNum("lead_submit", "scan_apply"), sess("scan_apply"));
+
+  useEffect(() => {
+    if (sanityLoggedRef.current) return;
+    if (!stats) return;
+
+    console.log("SANITY", {
+      cardSess: sess("card_impression"),
+      cartSess: sess("cart_add"),
+      cartWithinCards: sessNum("cart_add", "card_impression"),
+    });
+
+    sanityLoggedRef.current = true;
+  }, [stats]);
 
   return (
     <div className="p-6 bg-white min-h-full">
@@ -193,13 +274,13 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
           <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Sessions</div>
-          <div className="text-3xl font-black text-slate-900 mt-2">{s("session_start")}</div>
+          <div className="text-3xl font-black text-slate-900 mt-2">{sess("session_start")}</div>
           <div className="text-xs text-slate-500 mt-1">unique sessionId</div>
         </div>
 
         <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
           <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Impression sessions</div>
-          <div className="text-3xl font-black text-slate-900 mt-2">{s("card_impression")}</div>
+          <div className="text-3xl font-black text-slate-900 mt-2">{sess("card_impression")}</div>
           <div className="text-xs text-slate-500 mt-1">unique sessionId</div>
         </div>
       </div>
@@ -210,31 +291,31 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-600">Open rate (product_open / card_impression)</span>
-            <span className="font-black text-slate-900">{pct(s("product_open"), s("card_impression"))}</span>
+            <span className="font-black text-slate-900">{openRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Save rate (wishlist_add / card_impression)</span>
-            <span className="font-black text-slate-900">{pct(s("wishlist_add"), s("card_impression"))}</span>
+            <span className="font-black text-slate-900">{saveRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Bag rate (cart_add / card_impression)</span>
-            <span className="font-black text-slate-900">{pct(s("cart_add"), s("card_impression"))}</span>
+            <span className="font-black text-slate-900">{bagRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Checkout rate (checkout_open / cart_add)</span>
-            <span className="font-black text-slate-900">{pct(s("checkout_open"), s("cart_add"))}</span>
+            <span className="font-black text-slate-900">{checkoutRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Outbound rate (checkout_item_open / checkout_open)</span>
-            <span className="font-black text-slate-900">{pct(s("checkout_item_open"), s("checkout_open"))}</span>
+            <span className="font-black text-slate-900">{outboundRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Buy click rate (buy_click / checkout_open)</span>
-            <span className="font-black text-slate-900">{pctOnly(s("buy_click"), s("checkout_open"))}</span>
+            <span className="font-black text-slate-900">{buyRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead rate (lead_submit / checkout_open)</span>
-            <span className="font-black text-slate-900">{pct(s("lead_submit"), s("checkout_open"))}</span>
+            <span className="font-black text-slate-900">{leadRate}</span>
           </div>
         </div>
       </div>
@@ -245,15 +326,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-600">Scan success (scan_success / session_start)</span>
-            <span className="font-black text-slate-900">{pctOnly(s("scan_success"), s("session_start"))}</span>
+            <span className="font-black text-slate-900">{scanSuccess}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Pick save rate (pick_save / pick_impression)</span>
-            <span className="font-black text-slate-900">{pctOnly(s("pick_save"), s("pick_impression"))}</span>
+            <span className="font-black text-slate-900">{pickSave}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Pick dismiss rate (pick_dismiss / pick_impression)</span>
-            <span className="font-black text-slate-900">{pctOnly(s("pick_dismiss"), s("pick_impression"))}</span>
+            <span className="font-black text-slate-900">{pickDismiss}</span>
           </div>
         </div>
       </div>
@@ -264,15 +345,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-600">Apply rate (scan_apply / scan_success)</span>
-            <span className="font-black text-slate-900">{pctOnly(s("scan_apply"), s("scan_success"))}</span>
+            <span className="font-black text-slate-900">{applyRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Share rate (share_click / scan_apply)</span>
-            <span className="font-black text-slate-900">{pct(s("share_click"), s("scan_apply"))}</span>
+            <span className="font-black text-slate-900">{shareRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead from scan (lead_submit / scan_apply)</span>
-            <span className="font-black text-slate-900">{pctOnly(s("lead_submit"), s("scan_apply"))}</span>
+            <span className="font-black text-slate-900">{leadFromScan}</span>
           </div>
         </div>
       </div>
@@ -283,7 +364,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           {TYPES.map((t) => (
             <div key={t} className="flex justify-between">
               <span className="truncate">{t}</span>
-              <span className="font-black text-slate-900">{stats[t]?.count ?? 0}</span>
+              <span className="font-black text-slate-900">{ev(t)}</span>
             </div>
           ))}
         </div>
