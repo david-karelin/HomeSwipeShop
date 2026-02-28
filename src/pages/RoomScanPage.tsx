@@ -251,7 +251,7 @@ export default function RoomScanPage({
   const runScan = async () => {
     hadAnyPicksRef.current = false;
     setError(null);
-    void Firestore.logEvent({ type: "scan_start", source: "roomscan" }).catch(console.warn);
+    void Firestore.logEvent({ type: "scan_start", view: "roomscan", source: "roomscan" }).catch(console.warn);
     setLoading(true);
     setAnalysis(null);
     setScanStatus("scanning");
@@ -264,6 +264,7 @@ export default function RoomScanPage({
       await Promise.resolve(onApply(a));
       void Firestore.logEvent({
         type: "scan_success",
+        view: "roomscan",
         source: "roomscan",
         meta: {
           hasImage: Boolean(file),

@@ -1268,6 +1268,7 @@ const App: React.FC = () => {
 
       void Firestore.logEvent({
         type: "scan_apply",
+        view: "roomscan",
         source: "roomscan",
         meta: {
           picksCount: picks.length,
@@ -1305,11 +1306,16 @@ const App: React.FC = () => {
         bagCount: userPrefs.cart.length,
         wishlistCount: userPrefs.wishlist.length,
       });
+      // Guaranteed lead_submit event after successful save
       void Firestore.logEvent({
         type: "lead_submit",
         view: "checkout",
         source: "lead_form",
-        meta: { subtotal, items: userPrefs.cart.length },
+        meta: {
+          subtotal,
+          bagCount: userPrefs.cart.length,
+          wishlistCount: userPrefs.wishlist.length,
+        },
       }).catch(console.warn);
       setLeadStatus("saved");
       return true;
