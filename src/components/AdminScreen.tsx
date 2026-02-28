@@ -128,6 +128,14 @@ async function fetchAllStatsSince(
     if (sid) sessionSets[t].add(sid);
   });
 
+  const valid = sessionSets["session_start"] ?? new Set<string>();
+  if (valid.size) {
+    for (const t of Object.keys(sessionSets)) {
+      if (t === "session_start") continue;
+      sessionSets[t] = new Set([...sessionSets[t]].filter((sid) => valid.has(sid)));
+    }
+  }
+
   const byType: Record<string, Stat> = {};
   for (const t of types) {
     byType[t] = { count: counts[t] ?? 0, sessions: sessionSets[t]?.size ?? 0 };

@@ -14,6 +14,7 @@ function buildRoomScanShareUrl() {
   u.searchParams.set("utm_source", "share");
   u.searchParams.set("utm_medium", "roomscan");
   u.searchParams.set("utm_campaign", "viral");
+  u.searchParams.set("open", "roomscan"); // deep-link back to RoomScan
   return u.toString();
 }
 
@@ -58,6 +59,35 @@ export default function RoomScanPage({
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [scanStatus, setScanStatus] = useState<"idle" | "scanning" | "success" | "error">("idle");
+
+  // Deduped pick impression tracking
+  const pickImpRef = useRef<Set<string>>(new Set());
+    // Reset impressions when scan resets
+    useEffect(() => {
+      if (pickStatus === "idle") pickImpRef.current.clear();
+    }, [pickStatus]);
+
+    // Deduped pick_impression logging
+    useEffect(() => {
+      if (pickStatus !== "ready") return;
+      if (!picks.length) return;
+      for (const { product } of picks) {
+        const key = product.id;
+        if (pickImpRef.current.has(key)) continue;
+        pickImpRef.current.add(key);
+        void Firestore.logEvent({
+          type: "pick_impression",
+          productId: product.id,
+          view: "roomscan",
+          source: "roomscan_picks",
+          meta: {
+            category: product.category ?? "",
+            tags: Array.isArray(product.tags) ? product.tags : [],
+            price: Number(product.price ?? 0),
+          },
+        }).catch(console.warn);
+      }
+    }, [pickStatus, picks]);
   const [modelReady, setModelReady] = useState(false);
   const [analysis, setAnalysis] = useState<RoomScanAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -268,9 +298,12 @@ export default function RoomScanPage({
     resetInputs();
 
     hadAnyPicksRef.current = false;
+    pickImpRef.current.clear(); // clear dedupe set on local reset
   };
 
   const handleScanAgain = () => {
+    // ✅ reset pick impression dedupe
+    pickImpRef.current.clear();
     resetLocalScanUI();
     onScanAgain?.();
   };
@@ -699,7 +732,6 @@ export default function RoomScanPage({
                                 <button
                                   onClick={() => {
                                     void onSavePick(product);
-                                    onDismissPick(product.id);
                                   }}
                                   className="flex-1 rounded-xl py-2 bg-slate-100 text-slate-900 font-extrabold text-xs"
                                 >
@@ -708,7 +740,6 @@ export default function RoomScanPage({
                                 <button
                                   onClick={() => {
                                     void onBagPick(product);
-                                    onDismissPick(product.id);
                                   }}
                                   className="flex-1 rounded-xl py-2 text-white font-extrabold text-xs"
                                   style={{ background: "var(--seligo-cta)" }}

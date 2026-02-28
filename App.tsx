@@ -367,6 +367,7 @@ const App: React.FC = () => {
   const [undoCount, setUndoCount] = useState(0);
   const swipedRef = useRef<Set<string>>(new Set());
   const impressedRef = useRef<Set<string>>(new Set());
+  const openedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
   const roomScanImpressedRef = useRef<Set<string>>(new Set());
   const refineLockRef = useRef(false);
@@ -384,6 +385,18 @@ const App: React.FC = () => {
       if (allowed.has(k)) out[k] = obj[k];
     }
     return out;
+  };
+
+  const getOrCreateSessionId = () => {
+    const key = "seligo_session_id";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = (crypto as any).randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now()) + Math.random().toString(16).slice(2);
+      localStorage.setItem(key, id);
+    }
+    return id;
   };
 
   const goView = (next: AppState, source = "nav") => {
@@ -754,17 +767,23 @@ const App: React.FC = () => {
       return;
     }
 
-    void Firestore.logEvent({
-      type: "product_open",
-      productId: currentProduct.id,
-      source: "card_tap",
-      view: "feed",
-      meta: {
-        category: currentProduct.category ?? "",
-        tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
-        price: Number(currentProduct.price ?? 0),
-      },
-    }).catch(console.warn);
+    const sid = getOrCreateSessionId();
+    const key = `${sid}:${currentProduct.id}`;
+
+    if (!openedRef.current.has(key)) {
+      openedRef.current.add(key);
+      void Firestore.logEvent({
+        type: "product_open",
+        productId: currentProduct.id,
+        source: "card_tap",
+        view: "feed",
+        meta: {
+          category: currentProduct.category ?? "",
+          tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
+          price: Number(currentProduct.price ?? 0),
+        },
+      }).catch(console.warn);
+    }
 
     setSelectedProduct(currentProduct);
   };
@@ -829,13 +848,22 @@ const App: React.FC = () => {
     }));
     bumpTags(p, +2);
 
+    const pick = roomScanPicks.find((x) => x.product.id === p.id);
+
     void Firestore.logEvent({
       type: "pick_save",
       view: "roomscan",
       source: "roomscan_picks",
       productId: p.id,
+      meta: { score: pick?.score ?? 0 },
     }).catch(console.warn);
-    void Firestore.logEvent({ type: "wishlist_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
+    void Firestore.logEvent({
+      type: "wishlist_add",
+      view: "roomscan",
+      source: "roomscan_pick",
+      productId: p.id,
+      meta: { from: "roomscan", score: pick?.score ?? 0 },
+    }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "wishlist" }).catch(console.warn);
 
     dismissRoomScanPick(p.id, "save");
