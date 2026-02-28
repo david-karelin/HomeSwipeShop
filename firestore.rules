@@ -50,19 +50,53 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
-      function isAllowedType(t) {
-        return t == "buy_click" || t == "wishlist_add" || t == "cart_add";
+      function isAdmin() {
+        return request.auth != null
+          && request.auth.uid in ["PASTE_ADMIN_UID_HERE"];
+      }
+
+      function allowedType(t) {
+        return t in [
+          "session_start","view_change",
+          "scan_start","scan_success","scan_apply",
+          "card_impression","product_open","swipe_pass",
+          "wishlist_add","cart_add",
+          "checkout_open","checkout_item_open","buy_click",
+          "lead_submit",
+          "pick_impression","pick_save","pick_dismiss",
+          "share_click"
+        ];
+      }
+
+      function needsProductId(t) {
+        return t in [
+          "card_impression","product_open","swipe_pass",
+          "wishlist_add","cart_add",
+          "checkout_item_open","buy_click",
+          "pick_impression","pick_save","pick_dismiss"
+        ];
+      }
+
+      function needsPurchaseUrl(t) {
+        return t in ["buy_click","checkout_item_open"];
       }
 
       allow create: if request.auth != null
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.type is string
-        && isAllowedType(request.resource.data.type)
-        && request.resource.data.productId is string
-        && (request.resource.data.type != "buy_click" || request.resource.data.purchaseUrl is string)
-        && (!("source" in request.resource.data) || request.resource.data.source is string);
+        && allowedType(request.resource.data.type)
+        && request.resource.data.sessionId is string
+        && request.resource.data.view is string
+        && request.resource.data.source is string
+        && request.resource.data.utm is map
+        && request.resource.data.meta is map
+        && (!needsProductId(request.resource.data.type) || request.resource.data.productId is string)
+        && (!needsPurchaseUrl(request.resource.data.type)
+            || (request.resource.data.purchaseUrl is string && request.resource.data.purchaseUrl.size() >= 8));
 
-      allow read, update, delete: if false;
+      allow read: if isAdmin();
+
+      allow update, delete: if false;
     }
 
     match /swipes/{docId} {

@@ -198,10 +198,18 @@ export async function saveLead(payload: {
   subtotal: number;
   bagCount: number;
   wishlistCount: number;
+  source?: string;
+  view?: string;
 }) {
   const user = await ensureUser();
 
   const email = payload.email.trim().toLowerCase();
+
+  const key = `seligo_firstLeadMs_${email}`;
+  const existing = localStorage.getItem(key);
+  const firstLeadMs = existing ? Number(existing) : Date.now();
+  if (!existing) localStorage.setItem(key, String(firstLeadMs));
+
   await setDoc(
     doc(db, "leads", email),
     {
@@ -210,8 +218,10 @@ export async function saveLead(payload: {
       subtotal: payload.subtotal,
       bagCount: payload.bagCount,
       wishlistCount: payload.wishlistCount,
-      createdAt: serverTimestamp(),
-      source: "checkout_modal",
+      firstSubmittedAtClientMs: firstLeadMs,
+      lastSubmittedAt: serverTimestamp(),
+      source: payload.source ?? "checkout_modal",
+      view: payload.view ?? "cart",
     },
     { merge: true }
   );
@@ -219,6 +229,9 @@ export async function saveLead(payload: {
 
 type EventType =
   | "buy_click"
+  | "share_click"
+  | "checkout_item_open"
+  | "lead_submit"
   | "wishlist_add"
   | "cart_add"
   | "session_start"
@@ -317,8 +330,8 @@ export async function logEvent(payload: {
     createdAt: serverTimestamp(),
   };
 
-  if (payload.type === "buy_click") {
-    base.purchaseUrl = payload.purchaseUrl ?? "";
+  if (payload.type === "buy_click" || payload.type === "checkout_item_open") {
+    if (payload.purchaseUrl) base.purchaseUrl = payload.purchaseUrl;
   }
 
   await addDoc(collection(db, "events"), base);

@@ -4,6 +4,7 @@ import { Product, UserPreferences, AppState, UserPersona } from './types';
 import * as Backend from './backendService';
 import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
+import AdminScreen from './src/components/AdminScreen';
 import HowItWorksModal from './src/components/HowItWorksModal';
 import RoomScanPage from './src/pages/RoomScanPage';
 import type { RoomScanAnalysis } from './src/services/localRoomScan';
@@ -276,6 +277,66 @@ function SectionCard({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
+const PrivacyScreen = ({ onBack }: { onBack: () => void }) => (
+  <div className="p-6 bg-white min-h-full">
+    <div className="flex items-start justify-between mb-6">
+      <div>
+        <div className="text-2xl font-extrabold text-slate-900">Privacy</div>
+        <div className="text-sm text-slate-500 mt-1">How Seligo handles data</div>
+      </div>
+      <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <X className="h-5 w-5 text-slate-600" />
+      </button>
+    </div>
+
+    <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
+      <p>Seligo.AI uses anonymous authentication to personalize your feed.</p>
+      <p>We store your swipes, saved items, and usage events to improve recommendations.</p>
+      <p>If you submit your email for updates, it’s stored for that purpose only.</p>
+      <p>We do not sell personal data.</p>
+    </div>
+  </div>
+);
+
+const TermsScreen = ({ onBack }: { onBack: () => void }) => (
+  <div className="p-6 bg-white min-h-full">
+    <div className="flex items-start justify-between mb-6">
+      <div>
+        <div className="text-2xl font-extrabold text-slate-900">Terms</div>
+        <div className="text-sm text-slate-500 mt-1">Using Seligo</div>
+      </div>
+      <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <X className="h-5 w-5 text-slate-600" />
+      </button>
+    </div>
+
+    <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
+      <p>Seligo.AI provides product discovery and links to third-party retailers.</p>
+      <p>Product availability, pricing, and policies are controlled by the retailer.</p>
+      <p>Use at your own discretion. Seligo.AI is provided “as is”.</p>
+    </div>
+  </div>
+);
+
+const DisclosureScreen = ({ onBack }: { onBack: () => void }) => (
+  <div className="p-6 bg-white min-h-full">
+    <div className="flex items-start justify-between mb-6">
+      <div>
+        <div className="text-2xl font-extrabold text-slate-900">Affiliate Disclosure</div>
+        <div className="text-sm text-slate-500 mt-1">How Seligo may earn revenue</div>
+      </div>
+      <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <X className="h-5 w-5 text-slate-600" />
+      </button>
+    </div>
+
+    <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
+      <p>Seligo.AI may earn a commission if you purchase through links in the app.</p>
+      <p>These links do not change the price you pay.</p>
+    </div>
+  </div>
+);
+
 const App: React.FC = () => {
   const [view, setView] = useState<AppState>('auth');
   const [userPrefs, setUserPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
@@ -322,6 +383,13 @@ const App: React.FC = () => {
     setView(next);
     void Firestore.logEvent({ type: "view_change", source, view: next }).catch(console.warn);
   };
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("admin") === "1") {
+      goView("admin", "query_param");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const prev = prevViewRef.current;
@@ -1157,14 +1225,14 @@ const App: React.FC = () => {
 
   const subtotal = userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0);
 
-  const submitLead = async () => {
+  const submitLead = async (): Promise<boolean> => {
     setLeadError("");
 
     const email = leadEmail.trim();
     const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!ok) {
       setLeadError("Enter a valid email.");
-      return;
+      return false;
     }
 
     setLeadStatus("saving");
@@ -1176,10 +1244,12 @@ const App: React.FC = () => {
         wishlistCount: userPrefs.wishlist.length,
       });
       setLeadStatus("saved");
+      return true;
     } catch (e) {
       console.error(e);
       setLeadStatus("error");
       setLeadError("Couldn’t save right now. Try again.");
+      return false;
     }
   };
 
@@ -1328,6 +1398,15 @@ const App: React.FC = () => {
         </button>
       </div>
     );
+  }
+
+  if (view === "privacy") return <PrivacyScreen onBack={() => goView("profile", "legal_back")} />;
+  if (view === "terms") return <TermsScreen onBack={() => goView("profile", "legal_back")} />;
+  if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "legal_back")} />;
+  if (view === "admin") {
+    const ok = new URLSearchParams(window.location.search).get("admin") === "1";
+    if (!ok) return null;
+    return <AdminScreen onBack={() => goView("browsing", "admin_back")} />;
   }
 
   return (
@@ -1840,6 +1919,12 @@ const App: React.FC = () => {
               >
                 <RotateCcw className="w-4 h-4" /> Reset My Data
               </button>
+
+              <div className="mt-4 flex justify-center gap-4 text-[11px] font-bold text-slate-400">
+                <button onClick={() => goView("privacy", "profile_footer")} className="hover:text-slate-600">Privacy</button>
+                <button onClick={() => goView("terms", "profile_footer")} className="hover:text-slate-600">Terms</button>
+                <button onClick={() => goView("disclosure", "profile_footer")} className="hover:text-slate-600">Disclosure</button>
+              </div>
             </div>
           </Screen>
         )}
@@ -1999,6 +2084,18 @@ const App: React.FC = () => {
       <CheckoutLinksModal
         open={showCheckout}
         onClose={() => setShowCheckout(false)}
+        onPrivacy={() => {
+          setShowCheckout(false);
+          goView("privacy", "checkout_footer");
+        }}
+        onTerms={() => {
+          setShowCheckout(false);
+          goView("terms", "checkout_footer");
+        }}
+        onDisclosure={() => {
+          setShowCheckout(false);
+          goView("disclosure", "checkout_footer");
+        }}
         cart={userPrefs.cart}
         wishlist={userPrefs.wishlist}
         subtotal={userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0)}

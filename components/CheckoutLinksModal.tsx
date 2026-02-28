@@ -1,12 +1,15 @@
 import React, { useEffect } from "react";
 import type { Product } from "../types";
-import { logBuyClick } from "../firestoreService";
+import * as Firestore from "../firestoreService";
 
 const AMAZON_TAG = import.meta.env.VITE_AMAZON_ASSOC_TAG || "";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  onPrivacy: () => void;
+  onTerms: () => void;
+  onDisclosure: () => void;
   cart: Product[];
   wishlist?: Product[];
   subtotal: number;
@@ -16,7 +19,7 @@ type Props = {
   setLeadEmail: (v: string) => void;
   leadStatus: "idle" | "saving" | "saved" | "error";
   leadError: string;
-  onSubmitLead: () => void;
+  onSubmitLead: () => Promise<boolean>;
 };
 
 function buildAmazonSearchUrl(p: Product) {
@@ -42,20 +45,38 @@ function openInNewTab(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function handleBuy(product: Product) {
+async function handleBuy(product: Product) {
   const url = getPurchaseUrl(product);
   if (!url) return;
 
-  openInNewTab(url);
+  const meta = {
+    category: product.category ?? "",
+    tags: Array.isArray(product.tags) ? product.tags : [],
+    price: Number(product.price ?? 0),
+  };
 
-  logBuyClick({ productId: product.id, purchaseUrl: url, source: "checkout_modal" }).catch((e) => {
+  void Firestore.logEvent({
+    type: "checkout_item_open",
+    productId: product.id,
+    purchaseUrl: url,
+    source: "checkout_modal",
+    view: "cart",
+    meta,
+  }).catch(console.warn);
+
+  void Firestore.logBuyClick({ productId: product.id, purchaseUrl: url, source: "checkout_modal" }).catch((e) => {
     console.warn("logBuyClick failed", e);
   });
+
+  openInNewTab(url);
 }
 
 const CheckoutLinksModal: React.FC<Props> = ({
   open,
   onClose,
+  onPrivacy,
+  onTerms,
+  onDisclosure,
   cart,
   wishlist = [],
   subtotal,
@@ -65,6 +86,28 @@ const CheckoutLinksModal: React.FC<Props> = ({
   leadError,
   onSubmitLead,
 }) => {
+  const handleLeadClick = async () => {
+    const ok = await onSubmitLead();
+    if (!ok) return;
+
+    void Firestore.logEvent({
+      type: "lead_submit",
+      source: "checkout_modal",
+      view: "cart",
+      meta: { subtotal, items: cart.length },
+    }).catch(console.warn);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    void Firestore.logEvent({
+      type: "checkout_open",
+      source: "checkout_modal",
+      view: "cart",
+      meta: { items: cart.length, subtotal },
+    }).catch(console.warn);
+  }, [open]);
+
   // lock body scroll + close on Escape
   useEffect(() => {
     if (!open) return;
@@ -107,7 +150,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
             <div>
               <div className="text-2xl font-black text-slate-900">Checkout links</div>
               <div className="text-slate-500 text-sm mt-1">
-                This demo opens affiliate product pages (real checkout coming later).
+                This demo opens product pages (real checkout coming later).
               </div>
             </div>
 
@@ -127,10 +170,11 @@ const CheckoutLinksModal: React.FC<Props> = ({
         </div>
 
         {/* Scroll body (everything that can grow) */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4" data-modal-scroll="true">
-          <div className="space-y-3">
-            {cart.length > 0 ? (
-              cart.map((p) => (
+        {(cart.length > 0 || wishlist.length > 0) && (
+          <div className="min-h-0 flex-1 overflow-y-auto p-4" data-modal-scroll="true">
+            <div className="space-y-3">
+              {cart.length > 0 &&
+                cart.map((p) => (
                 <div key={p.id} className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3">
                   <img
                     src={p.imageUrl}
@@ -144,56 +188,50 @@ const CheckoutLinksModal: React.FC<Props> = ({
                     </div>
                   </div>
                   <button
-                    onClick={() => handleBuy(p)}
+                    onClick={() => void handleBuy(p)}
                     className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition"
                   >
-                    Open on Amazon
+                    View product
                   </button>
                 </div>
-              ))
-            ) : (
-              <div className="text-slate-500 text-sm">Your bag is empty.</div>
-            )}
+              ))}
 
-            {wishlist.length > 0 && (
-              <div className="pt-2">
-                <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                  Saved for later
-                </div>
+              {wishlist.length > 0 && (
+                <div className="pt-2">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
+                    Saved for later
+                  </div>
 
-                <div className="space-y-3">
-                  {wishlist.map((p) => (
-                    <div
-                      key={`${p.id}-wish`}
-                      className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3 opacity-80"
-                    >
-                      <img
-                        src={p.imageUrl}
-                        alt={p.name}
-                        className="w-12 h-12 rounded-xl object-cover bg-slate-100"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                        <div className="text-xs text-slate-500 truncate">${Number(p.price ?? 0).toFixed(2)}</div>
-                      </div>
-                      <button
-                          onClick={() => handleBuy(p)}
-                        className="shrink-0 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-widest hover:bg-slate-200"
+                  <div className="space-y-3">
+                    {wishlist.map((p) => (
+                      <div
+                        key={`${p.id}-wish`}
+                        className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3 opacity-80"
                       >
-                        Open
-                      </button>
-                    </div>
-                  ))}
+                        <img
+                          src={p.imageUrl}
+                          alt={p.name}
+                          className="w-12 h-12 rounded-xl object-cover bg-slate-100"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                          <div className="text-xs text-slate-500 truncate">${Number(p.price ?? 0).toFixed(2)}</div>
+                        </div>
+                        <button
+                          onClick={() => void handleBuy(p)}
+                          className="shrink-0 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-widest hover:bg-slate-200"
+                        >
+                          View product
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <div className="mt-5 text-[11px] text-slate-500 leading-snug">
-            Disclosure: some links may be affiliate links. We may earn a commission at no extra cost to you.
           </div>
-
-        </div>
+        )}
 
         <div className="shrink-0 p-4 border-t border-slate-100">
           <div className="mt-1">
@@ -223,7 +261,7 @@ const CheckoutLinksModal: React.FC<Props> = ({
                 )}
 
                 <button
-                  onClick={onSubmitLead}
+                  onClick={() => void handleLeadClick()}
                   disabled={leadStatus === "saving"}
                   className="mt-4 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
                 >
@@ -233,8 +271,39 @@ const CheckoutLinksModal: React.FC<Props> = ({
                 <div className="text-[11px] text-slate-400 mt-3 leading-snug">
                   We’ll only use this to contact you about checkout. No spam.
                 </div>
+
               </>
             )}
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4">
+            <div className="text-[11px] text-slate-500 leading-relaxed">
+              Seligo may earn a commission if you buy through links. Links may become affiliate links later.
+            </div>
+
+            <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400">
+              <button
+                type="button"
+                onClick={onPrivacy}
+                className="hover:text-slate-600"
+              >
+                Privacy
+              </button>
+              <button
+                type="button"
+                onClick={onTerms}
+                className="hover:text-slate-600"
+              >
+                Terms
+              </button>
+              <button
+                type="button"
+                onClick={onDisclosure}
+                className="hover:text-slate-600"
+              >
+                Disclosure
+              </button>
+            </div>
           </div>
 
           <button

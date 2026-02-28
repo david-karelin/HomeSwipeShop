@@ -8,6 +8,15 @@ import {
   type RoomScanAnalysis,
 } from "../services/localRoomScan";
 
+function buildRoomScanShareUrl() {
+  const u = new URL(window.location.href);
+  u.searchParams.delete("admin");
+  u.searchParams.set("utm_source", "share");
+  u.searchParams.set("utm_medium", "roomscan");
+  u.searchParams.set("utm_campaign", "viral");
+  return u.toString();
+}
+
 type Props = {
   onApply: (a: RoomScanAnalysis) => Promise<void>;
   picks: { product: Product; rationale: string[] }[];
@@ -52,6 +61,7 @@ export default function RoomScanPage({
   const [modelReady, setModelReady] = useState(false);
   const [analysis, setAnalysis] = useState<RoomScanAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [shareNote, setShareNote] = useState<string>("");
 
   const [screen, setScreen] = useState<"main" | "preview">("main");
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -104,6 +114,44 @@ export default function RoomScanPage({
   }, [pickStatus, picks.length, scanStatus, analysis]);
 
   const canScan = useMemo(() => roomText.trim().length > 0 || !!file, [roomText, file]);
+
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return buildRoomScanShareUrl();
+  }, []);
+
+  const handleShare = async () => {
+    if (!shareUrl) return;
+
+    void Firestore.logEvent({
+      type: "share_click",
+      source: "roomscan_cleared",
+      meta: { url: shareUrl },
+    }).catch(console.warn);
+
+    setShareNote("");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Seligo.AI RoomScan",
+          text: "Try this RoomScan — it curates decor picks from a room photo.",
+          url: shareUrl,
+        });
+        setShareNote("Shared ✅");
+        return;
+      }
+    } catch {
+      // user cancelled share sheet or it failed; fall back to copy
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareNote("Link copied ✅");
+    } catch {
+      setShareNote("Couldn’t share automatically — copy the URL from the address bar.");
+    }
+  };
 
   const resetInputs = () => {
     if (cameraRef.current) cameraRef.current.value = "";
@@ -565,10 +613,24 @@ export default function RoomScanPage({
                           onClick={onGoExplore}
                           className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold bg-white border border-slate-200 text-slate-900"
                         >
-                          Go to Explore
+                          Explore
                           <ArrowRight className="h-4 w-4" />
                         </button>
                       </div>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          onClick={handleShare}
+                          className="w-full rounded-xl py-3 font-extrabold text-sm text-white"
+                          style={{ background: "var(--seligo-cta)" }}
+                        >
+                          Share RoomScan
+                        </button>
+                      </div>
+
+                      {shareNote ? (
+                        <div className="mt-2 text-xs text-slate-500 text-center">{shareNote}</div>
+                      ) : null}
                     </div>
                   </div>
                 </div>

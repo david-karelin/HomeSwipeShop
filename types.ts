@@ -39,4 +39,15 @@ export interface UserPreferences {
   feedIndex: number;
 }
 
-export type AppState = 'auth' | 'interests' | 'discovering' | 'browsing' | 'search' | 'cart' | 'profile' | 'roomscan';
+export type AppState =
+  | 'auth'
+  | 'interests'
+  | 'discovering'
+  | 'browsing'
+  | 'profile'
+  | 'roomscan'
+  | 'cart'
+  | 'privacy'
+  | 'terms'
+  | 'disclosure'
+  | 'admin';
