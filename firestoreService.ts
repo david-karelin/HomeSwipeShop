@@ -31,7 +31,7 @@ export async function ensureUser() {
 
   await user.getIdToken(true);
 
-  console.log("[SELIGO] uid:", user.uid);
+  console.log("[SELIGO_UID_JSON]", JSON.stringify(user.uid));
   return user;
 }
 
