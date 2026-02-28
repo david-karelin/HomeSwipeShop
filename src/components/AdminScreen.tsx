@@ -106,28 +106,22 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     try {
       await ensureUser();
 
-      await auth.currentUser?.getIdToken(true);
-
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
       const testId = "09joXcy2X5Kzm72jMNc3";
 
       try {
-        await sleep(300);
+        await sleep(250);
         const snap1 = await getDoc(doc(db, "events", testId));
         console.log("[ADMIN PROBE] getDoc OK (try1):", snap1.exists());
       } catch (e1: any) {
         console.log("[ADMIN PROBE] getDoc FAIL (try1):", e1?.code, e1?.message);
 
         await auth.currentUser?.getIdToken(true);
-        await sleep(1200);
+        await sleep(1000);
 
-        try {
-          const snap2 = await getDoc(doc(db, "events", testId));
-          console.log("[ADMIN PROBE] getDoc OK (try2):", snap2.exists());
-        } catch (e2: any) {
-          console.log("[ADMIN PROBE] getDoc FAIL (try2):", e2?.code, e2?.message);
-        }
+        const snap2 = await getDoc(doc(db, "events", testId));
+        console.log("[ADMIN PROBE] getDoc OK (try2):", snap2.exists());
       }
 
       setLoading(false);

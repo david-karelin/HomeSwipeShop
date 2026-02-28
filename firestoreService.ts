@@ -22,12 +22,15 @@ import type { Product } from "./types";
 export { db, auth };
 
 export async function ensureUser() {
-  if (auth.currentUser) {
-    console.log("[SELIGO] uid:", auth.currentUser.uid);
-    return auth.currentUser;
+  let user = auth.currentUser;
+
+  if (!user) {
+    const cred = await signInAnonymously(auth);
+    user = cred.user;
   }
-  const cred = await signInAnonymously(auth);
-  const user = cred.user;
+
+  await user.getIdToken(true);
+
   console.log("[SELIGO] uid:", user.uid);
   return user;
 }
