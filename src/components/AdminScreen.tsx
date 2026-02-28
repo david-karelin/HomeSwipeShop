@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { auth, db, ensureUser } from "../../firestoreService";
+import { db, ensureUser } from "../../firestoreService";
 
 type EventType =
   | "session_start"
@@ -104,18 +104,14 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await ensureUser();
+
       const testId = "09joXcy2X5Kzm72jMNc3";
       const snap = await getDoc(doc(db, "events", testId));
+
       console.log("[ADMIN DEBUG] getDoc allowed?", snap.exists(), "id:", testId);
 
       setLoading(false);
       return;
-      console.log("[ADMIN] auth app name:", (auth as any).app?.name);
-      console.log("[ADMIN] db app name:", (db as any).app?.name);
-      console.log("[ADMIN] uid:", auth.currentUser?.uid);
-      await auth.currentUser?.getIdToken(true);
-      const map = await fetchAllStatsSince(since, TYPES);
-      setStats(map);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load metrics.");
     } finally {
@@ -123,10 +119,8 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // comment this out for the debug test:
+  // useEffect(() => { void refresh(); }, []);
 
   const s = (k: EventType) => stats[k]?.sessions ?? 0;
   const c = (k: EventType) => stats[k]?.count ?? 0;
