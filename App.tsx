@@ -775,8 +775,8 @@ const App: React.FC = () => {
       void Firestore.logEvent({
         type: "product_open",
         productId: currentProduct.id,
-        source: "card_tap",
-        view: "feed",
+        source: "feed",
+        view: "browsing",
         meta: {
           category: currentProduct.category ?? "",
           tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
@@ -793,17 +793,31 @@ const App: React.FC = () => {
     if (!currentProduct) return;
 
     void Firestore.saveSwipe({ productId: currentProduct.id, direction: "right", action });
-    void Firestore.logEvent({
-      type: action === "wishlist" ? "wishlist_add" : "cart_add",
-      productId: currentProduct.id,
-      source,
-      view: "browsing",
-      meta: {
-        category: currentProduct.category ?? "",
-        tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
-        price: Number(currentProduct.price ?? 0),
-      },
-    }).catch(console.warn);
+    // Feed wishlist_add logs view: 'browsing', source: 'feed_actions'
+    if (action === "wishlist") {
+      void Firestore.logEvent({
+        type: "wishlist_add",
+        productId: currentProduct.id,
+        source: "feed",
+        view: "browsing",
+        meta: {
+          category: currentProduct.category ?? "",
+          price: Number(currentProduct.price ?? 0),
+        },
+      }).catch(console.warn);
+    } else {
+      void Firestore.logEvent({
+        type: "cart_add",
+        productId: currentProduct.id,
+        source: "feed",
+        view: "browsing",
+        meta: {
+          category: currentProduct.category ?? "",
+          price: Number(currentProduct.price ?? 0),
+          actionSource: source,
+        },
+      }).catch(console.warn);
+    }
     bumpTags(currentProduct, +2);
     swipedRef.current.add(currentProduct.id);
 
@@ -856,13 +870,6 @@ const App: React.FC = () => {
       source: "roomscan_picks",
       productId: p.id,
       meta: { score: pick?.score ?? 0 },
-    }).catch(console.warn);
-    void Firestore.logEvent({
-      type: "wishlist_add",
-      view: "roomscan",
-      source: "roomscan_pick",
-      productId: p.id,
-      meta: { from: "roomscan", score: pick?.score ?? 0 },
     }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "wishlist" }).catch(console.warn);
 
