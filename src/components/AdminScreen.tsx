@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { db } from "../../firebase";
+import { auth, db } from "../../firebase";
 import { ensureUser } from "../../firestoreService";
 
 type EventType =
@@ -93,6 +93,9 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Record<string, Stat>>({});
   const [error, setError] = useState<string | null>(null);
+  const adminEnabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("admin") === "1";
 
   const since = useMemo(() => {
     const now = new Date();
@@ -105,6 +108,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await ensureUser();
+      console.log("[ADMIN] projectId:", (db as any)?.app?.options?.projectId);
+      console.log("[ADMIN] uid:", auth.currentUser?.uid);
+      console.log("[ADMIN] adminEnabled:", adminEnabled);
+      await auth.currentUser?.getIdToken(true);
       const map = await fetchAllStatsSince(since, TYPES);
       setStats(map);
     } catch (e: any) {
