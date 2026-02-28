@@ -19,11 +19,15 @@ import { signInAnonymously } from "firebase/auth";
 import { auth, db } from "./firebase";
 import type { Product } from "./types";
 
+export { db, auth };
+
 export async function ensureUser() {
-  if (!auth.currentUser) {
-    await signInAnonymously(auth);
+  if (auth.currentUser) {
+    console.log("[SELIGO] uid:", auth.currentUser.uid);
+    return auth.currentUser;
   }
-  const user = auth.currentUser!;
+  const cred = await signInAnonymously(auth);
+  const user = cred.user;
   console.log("[SELIGO] uid:", user.uid);
   return user;
 }

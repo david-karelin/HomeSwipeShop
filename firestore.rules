@@ -94,7 +94,8 @@ service cloud.firestore {
         && (!needsPurchaseUrl(request.resource.data.type)
             || (request.resource.data.purchaseUrl is string && request.resource.data.purchaseUrl.size() >= 8));
 
-      allow read: if isAdmin();
+      allow get: if isAdmin();
+      allow list: if false;
 
       allow update, delete: if false;
     }

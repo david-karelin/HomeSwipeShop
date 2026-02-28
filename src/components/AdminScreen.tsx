@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { auth, db } from "../../firebase";
-import { ensureUser } from "../../firestoreService";
+import { collection, doc, getDoc, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
+import { auth, db, ensureUser } from "../../firestoreService";
 
 type EventType =
   | "session_start"
@@ -93,9 +92,6 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Record<string, Stat>>({});
   const [error, setError] = useState<string | null>(null);
-  const adminEnabled =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("admin") === "1";
 
   const since = useMemo(() => {
     const now = new Date();
@@ -108,9 +104,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await ensureUser();
-      console.log("[ADMIN] projectId:", (db as any)?.app?.options?.projectId);
+      const testId = "09joXcy2X5Kzm72jMNc3";
+      const snap = await getDoc(doc(db, "events", testId));
+      console.log("[ADMIN DEBUG] getDoc allowed?", snap.exists(), "id:", testId);
+
+      setLoading(false);
+      return;
+      console.log("[ADMIN] auth app name:", (auth as any).app?.name);
+      console.log("[ADMIN] db app name:", (db as any).app?.name);
       console.log("[ADMIN] uid:", auth.currentUser?.uid);
-      console.log("[ADMIN] adminEnabled:", adminEnabled);
       await auth.currentUser?.getIdToken(true);
       const map = await fetchAllStatsSince(since, TYPES);
       setStats(map);
