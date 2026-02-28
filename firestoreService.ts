@@ -23,7 +23,9 @@ async function ensureUser() {
   if (!auth.currentUser) {
     await signInAnonymously(auth);
   }
-  return auth.currentUser!;
+  const user = auth.currentUser!;
+  console.log("[SELIGO] uid:", user.uid);
+  return user;
 }
 
 // Maps Firestore docs to your existing Product type (fills missing fields safely)
