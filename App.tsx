@@ -862,14 +862,17 @@ const App: React.FC = () => {
     }));
     bumpTags(p, +2);
 
-    const pick = roomScanPicks.find((x) => x.product.id === p.id);
-
     void Firestore.logEvent({
-      type: "pick_save",
+      type: "wishlist_add",
       view: "roomscan",
       source: "roomscan_picks",
       productId: p.id,
-      meta: { score: pick?.score ?? 0 },
+      meta: {
+        category: p.category ?? "",
+        tags: Array.isArray(p.tags) ? p.tags : [],
+        price: Number(p.price ?? 0),
+        from: "roomscan",
+      },
     }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "wishlist" }).catch(console.warn);
 
@@ -885,7 +888,18 @@ const App: React.FC = () => {
     }));
     bumpTags(p, +2);
 
-    void Firestore.logEvent({ type: "cart_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
+    void Firestore.logEvent({
+      type: "cart_add",
+      view: "roomscan",
+      source: "roomscan_pick",
+      productId: p.id,
+      meta: {
+        category: p.category ?? "",
+        tags: Array.isArray(p.tags) ? p.tags : [],
+        price: Number(p.price ?? 0),
+        from: "roomscan",
+      },
+    }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "cart" }).catch(console.warn);
 
     dismissRoomScanPick(p.id, "bag");

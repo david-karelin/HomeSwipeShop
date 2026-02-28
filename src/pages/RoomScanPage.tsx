@@ -732,6 +732,17 @@ export default function RoomScanPage({
                               <div className="mt-3 flex gap-2">
                                 <button
                                   onClick={() => {
+                                    void Firestore.logEvent({
+                                      type: "pick_save",
+                                      productId: product.id,
+                                      source: "roomscan_picks",
+                                      view: "roomscan",
+                                      meta: {
+                                        category: product.category ?? "",
+                                        tags: Array.isArray(product.tags) ? product.tags : [],
+                                        price: Number(product.price ?? 0),
+                                      },
+                                    }).catch(console.warn);
                                     void onSavePick(product);
                                   }}
                                   className="flex-1 rounded-xl py-2 bg-slate-100 text-slate-900 font-extrabold text-xs"
