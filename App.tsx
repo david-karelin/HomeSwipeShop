@@ -299,10 +299,29 @@ const App: React.FC = () => {
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [undoCount, setUndoCount] = useState(0);
   const swipedRef = useRef<Set<string>>(new Set());
+  const impressedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
   const refineLockRef = useRef(false);
   const prevViewRef = useRef(view);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
+
+  const resetImpressions = () => {
+    impressedRef.current = new Set();
+  };
+
+  const sanitizeUtm = (obj: any) => {
+    const allowed = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]);
+    const out: any = {};
+    for (const k of Object.keys(obj || {})) {
+      if (allowed.has(k)) out[k] = obj[k];
+    }
+    return out;
+  };
+
+  const goView = (next: AppState, source = "nav") => {
+    setView(next);
+    void Firestore.logEvent({ type: "view_change", source, view: next }).catch(console.warn);
+  };
 
   useEffect(() => {
     const prev = prevViewRef.current;
@@ -314,6 +333,19 @@ const App: React.FC = () => {
 
     prevViewRef.current = view;
   }, [view]);
+
+  useEffect(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("seligo_utm") || "{}");
+      localStorage.setItem("seligo_utm", JSON.stringify(sanitizeUtm(raw)));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void Firestore.logEvent({ type: "session_start", source: "app", view });
+  }, []);
 
   useEffect(() => {
     if (!selectedProduct) return;
@@ -523,6 +555,7 @@ const App: React.FC = () => {
     localStorage.removeItem("swipeshop_data");
     localStorage.removeItem("tagScores");
     setUserPrefs(DEFAULT_PREFS);
+    resetImpressions();
     setProducts([]);
     setCurrentIndex(0);
     setCursor(null);
@@ -551,6 +584,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     if (opts.navigate !== false) setView("discovering");
     try {
+      resetImpressions();
       setProducts([]);
       setCursor(null);
       setHasMore(true);
@@ -610,8 +644,19 @@ const App: React.FC = () => {
         dislikedProducts: [...prev.dislikedProducts, currentProduct]
       }));
 
-      Firestore.saveSwipe({ productId: currentProduct.id, direction: "left", action: null })
-        .catch(console.error);
+      void Firestore.saveSwipe({ productId: currentProduct.id, direction: "left", action: null }).catch(console.error);
+
+      void Firestore.logEvent({
+        type: "swipe_pass",
+        productId: currentProduct.id,
+        source: "feed_swipe",
+        view: "browsing",
+        meta: {
+          category: currentProduct.category ?? "",
+          tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
+          price: Number(currentProduct.price ?? 0),
+        },
+      }).catch(console.warn);
 
       bumpTags(currentProduct, -1);
       swipedRef.current.add(currentProduct.id);
@@ -621,10 +666,22 @@ const App: React.FC = () => {
       return;
     }
 
+    void Firestore.logEvent({
+      type: "product_open",
+      productId: currentProduct.id,
+      source: "feed_card",
+      view: "browsing",
+      meta: {
+        category: currentProduct.category ?? "",
+        tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
+        price: Number(currentProduct.price ?? 0),
+      },
+    }).catch(console.warn);
+
     setSelectedProduct(currentProduct);
   };
 
-  const handleAction = async (action: 'wishlist' | 'cart') => {
+  const handleAction = async (action: 'wishlist' | 'cart', source: string = "style_match_modal") => {
     const currentProduct = products[currentIndex];
     if (!currentProduct) return;
 
@@ -632,7 +689,13 @@ const App: React.FC = () => {
     void Firestore.logEvent({
       type: action === "wishlist" ? "wishlist_add" : "cart_add",
       productId: currentProduct.id,
-      source: "style_match_modal",
+      source,
+      view: "browsing",
+      meta: {
+        category: currentProduct.category ?? "",
+        tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
+        price: Number(currentProduct.price ?? 0),
+      },
     }).catch(console.warn);
     bumpTags(currentProduct, +2);
     swipedRef.current.add(currentProduct.id);
@@ -670,6 +733,7 @@ const App: React.FC = () => {
     }));
     bumpTags(p, +2);
 
+    void Firestore.logEvent({ type: "pick_save", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
     void Firestore.logEvent({ type: "wishlist_add", productId: p.id, source: "roomscan_pick" }).catch(console.warn);
     void Firestore.saveSwipe({ productId: p.id, direction: "right", action: "wishlist" }).catch(console.warn);
 
@@ -1072,6 +1136,15 @@ const App: React.FC = () => {
       console.log("[RoomScan] interestsToUse:", interestsToUse);
       console.log("[RoomScan] ranked:", ranked.length, "candidates:", candidates.length, "picks:", picks.length);
 
+      void Firestore.logEvent({
+        type: "scan_apply",
+        source: "roomscan",
+        meta: {
+          picksCount: picks.length,
+          interestsCount: interestsToUse.length,
+        },
+      }).catch(console.warn);
+
       setRoomScanPicks(picks);
       setRoomScanPickStatus("ready");
       setView("roomscan");
@@ -1145,6 +1218,30 @@ const App: React.FC = () => {
       setIsAlgorithmRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (view !== "browsing") return;
+
+    const p = products[currentIndex];
+    if (!p?.id) return;
+
+    if (impressedRef.current.has(p.id)) return;
+    impressedRef.current.add(p.id);
+
+    void Firestore.logEvent({
+      type: "card_impression",
+      productId: p.id,
+      source: "feed",
+      view: "browsing",
+      meta: {
+        category: p.category ?? "",
+        tags: Array.isArray(p.tags) ? p.tags : [],
+        price: Number(p.price ?? 0),
+        index: currentIndex,
+      },
+    }).catch(console.warn);
+  }, [view, currentIndex, products]);
+
   useEffect(() => {
     if (view !== "browsing") return;
 
@@ -1379,7 +1476,7 @@ const App: React.FC = () => {
                     product={products[currentIndex]}
                     onSwipe={handleSwipe}
                     onSelectAction={handleAction}
-                    onTap={() => setSelectedProduct(products[currentIndex])}
+                    onTap={() => handleSwipe("right")}
                   />
                   <div className="mt-4 flex items-center gap-2 text-slate-400 text-[11px] font-extrabold uppercase tracking-[0.22em] bg-white px-4 py-2 rounded-full border border-slate-100 shadow-sm">
                     <Sparkles className="w-3 h-3 text-[var(--seligo-accent)]" />
@@ -1503,7 +1600,7 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => {
-                        handleAction("wishlist");
+                        handleAction("wishlist", "product_sheet");
                         setSelectedProduct(null);
                       }}
                       className="h-12 rounded-2xl bg-slate-100 text-slate-900 font-extrabold"
@@ -1513,7 +1610,7 @@ const App: React.FC = () => {
 
                     <button
                       onClick={() => {
-                        handleAction("cart");
+                        handleAction("cart", "product_sheet");
                         setSelectedProduct(null);
                       }}
                       className="h-12 rounded-2xl text-white font-extrabold"
@@ -1886,6 +1983,7 @@ const App: React.FC = () => {
                   setLeadError("");
                   setLeadStatus("idle");
                   setShowCheckout(true);
+                  void Firestore.logEvent({ type: "checkout_open", source: "bag" }).catch(console.warn);
                 }}
                 className="w-full rounded-2xl py-4 font-extrabold text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: "var(--seligo-cta)" }}
@@ -1922,28 +2020,28 @@ const App: React.FC = () => {
           <NavItem
             active={view === "browsing"}
             label="Explore"
-            onClick={() => setView("browsing")}
+            onClick={() => goView("browsing")}
             icon={<Compass className="w-6 h-6" />}
           />
 
           <NavItem
             active={view === "profile"}
             label="Insights"
-            onClick={() => setView("profile")}
+            onClick={() => goView("profile")}
             icon={<BrainCircuit className="w-6 h-6" />}
           />
 
           <NavItem
             active={view === "roomscan"}
             label="RoomScan"
-            onClick={() => setView("roomscan")}
+            onClick={() => goView("roomscan")}
             icon={<Scan className="w-6 h-6" />}
           />
 
           <NavItem
             active={view === "cart"}
             label="Bag"
-            onClick={() => setView("cart")}
+            onClick={() => goView("cart")}
             icon={
               <div className="relative">
                 <ShoppingBag className="w-6 h-6" />

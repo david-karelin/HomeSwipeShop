@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Sparkles, Image as ImageIcon, X, CheckCircle2, RotateCcw, ArrowRight } from "lucide-react";
 import type { Product } from "../../types";
+import * as Firestore from "../../firestoreService";
 import {
   analyzeRoomLocally,
   preloadRoomScanModels,
@@ -56,6 +57,36 @@ export default function RoomScanPage({
   const cameraRef = useRef<HTMLInputElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const hadAnyPicksRef = useRef(false);
+  const pickImpressedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (pickStatus === "loading" || pickStatus === "idle") {
+      pickImpressedRef.current = new Set();
+    }
+  }, [pickStatus]);
+
+  useEffect(() => {
+    if (pickStatus !== "ready") return;
+    if (!picks?.length) return;
+
+    for (const { product } of picks) {
+      if (!product?.id) continue;
+      if (pickImpressedRef.current.has(product.id)) continue;
+      pickImpressedRef.current.add(product.id);
+
+      void Firestore.logEvent({
+        type: "pick_impression",
+        productId: product.id,
+        source: "roomscan_picks",
+        view: "roomscan",
+        meta: {
+          category: product.category ?? "",
+          tags: Array.isArray(product.tags) ? product.tags : [],
+          price: Number(product.price ?? 0),
+        },
+      }).catch(console.warn);
+    }
+  }, [pickStatus, picks]);
 
   useEffect(() => {
     if (picks.length > 0) hadAnyPicksRef.current = true;
@@ -142,6 +173,7 @@ export default function RoomScanPage({
   const runScan = async () => {
     hadAnyPicksRef.current = false;
     setError(null);
+    void Firestore.logEvent({ type: "scan_start", source: "roomscan" }).catch(console.warn);
     setLoading(true);
     setAnalysis(null);
     setScanStatus("scanning");
@@ -152,6 +184,15 @@ export default function RoomScanPage({
       const a = await withTimeout(analyzeRoomLocally(file, roomText), 25000, "Local AI scan");
       setAnalysis(a);
       await Promise.resolve(onApply(a));
+      void Firestore.logEvent({
+        type: "scan_success",
+        source: "roomscan",
+        meta: {
+          hasImage: Boolean(file),
+          hasDescription: roomText.trim().length > 0,
+          objectsDetected: Array.isArray(a?.debug?.objects) ? a.debug.objects.length : 0,
+        },
+      }).catch(console.warn);
       setProgress(100);
       setScanStatus("success");
       if ("vibrate" in navigator) (navigator as any).vibrate?.(20);
@@ -552,7 +593,21 @@ export default function RoomScanPage({
                           <div key={product.id} className="relative flex gap-3 border border-black/5 rounded-2xl p-3">
                             <button
                               type="button"
-                              onClick={() => onDismissPick(product.id)}
+                              onClick={() => {
+                                void Firestore.logEvent({
+                                  type: "pick_dismiss",
+                                  productId: product.id,
+                                  source: "roomscan_picks",
+                                  view: "roomscan",
+                                  meta: {
+                                    category: product.category ?? "",
+                                    tags: Array.isArray(product.tags) ? product.tags : [],
+                                    price: Number(product.price ?? 0),
+                                  },
+                                }).catch(console.warn);
+
+                                onDismissPick(product.id);
+                              }}
                               className="absolute top-2 right-2 w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
                               aria-label="Dismiss"
                               title="Dismiss"

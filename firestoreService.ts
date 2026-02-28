@@ -217,21 +217,103 @@ export async function saveLead(payload: {
   );
 }
 
-type EventType = "buy_click" | "wishlist_add" | "cart_add";
+type EventType =
+  | "buy_click"
+  | "wishlist_add"
+  | "cart_add"
+  | "session_start"
+  | "view_change"
+  | "scan_start"
+  | "scan_success"
+  | "scan_apply"
+  | "pick_save"
+  | "pick_impression"
+  | "pick_dismiss"
+  | "checkout_open"
+  | "swipe_pass"
+  | "product_open"
+  | "card_impression";
+
+type UTM = Partial<{
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_content: string;
+  utm_term: string;
+}>;
+
+function getOrCreateSessionId() {
+  const key = "seligo_session_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = (crypto as any).randomUUID
+      ? crypto.randomUUID()
+      : String(Date.now()) + Math.random().toString(16).slice(2);
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function readUtmFromUrl(): UTM {
+  const params = new URLSearchParams(window.location.search);
+  const utm: UTM = {};
+  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const) {
+    const v = params.get(k);
+    if (v) (utm as any)[k] = v;
+  }
+  return utm;
+}
+
+function persistUtmIfPresent() {
+  const key = "seligo_utm";
+  const now = readUtmFromUrl();
+  if (Object.keys(now).length) localStorage.setItem(key, JSON.stringify(now));
+}
+
+function getPersistedUtm(): UTM {
+  try {
+    return sanitizeUtm(JSON.parse(localStorage.getItem("seligo_utm") || "{}"));
+  } catch {
+    return {};
+  }
+}
+
+function sanitizeUtm(obj: any) {
+  const allowed = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]);
+  const out: any = {};
+  for (const k of Object.keys(obj || {})) {
+    if (allowed.has(k)) out[k] = obj[k];
+  }
+  return out;
+}
 
 export async function logEvent(payload: {
   type: EventType;
-  productId: string;
+  productId?: string;
   purchaseUrl?: string;
   source?: string;
+  view?: string;
+  meta?: Record<string, any>;
 }) {
+  persistUtmIfPresent();
+
   const user = await ensureUser();
+  const sessionId = getOrCreateSessionId();
+  const utm = getPersistedUtm();
+  const category = payload.meta?.category ?? null;
+  const price = payload.meta?.price ?? null;
 
   const base: any = {
     type: payload.type,
     uid: user.uid,
-    productId: payload.productId,
+    sessionId,
+    view: payload.view ?? "unknown",
+    productId: payload.productId ?? null,
     source: payload.source ?? "unknown",
+    category,
+    price,
+    utm,
+    meta: payload.meta ?? {},
     createdAt: serverTimestamp(),
   };
 
