@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { db, ensureUser } from "../../firestoreService";
+import { auth, db, ensureUser } from "../../firestoreService";
 
 type EventType =
   | "session_start"
@@ -106,12 +106,28 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     try {
       await ensureUser();
 
+      await auth.currentUser?.getIdToken(true);
+
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+      const testId = "09joXcy2X5Kzm72jMNc3";
+
       try {
-        const testId = "09joXcy2X5Kzm72jMNc3";
-        const one = await getDoc(doc(db, "events", testId));
-        console.log("[ADMIN PROBE] getDoc OK:", one.exists(), "id:", testId);
-      } catch (e: any) {
-        console.log("[ADMIN PROBE] getDoc FAILED:", e?.code, e?.message);
+        await sleep(300);
+        const snap1 = await getDoc(doc(db, "events", testId));
+        console.log("[ADMIN PROBE] getDoc OK (try1):", snap1.exists());
+      } catch (e1: any) {
+        console.log("[ADMIN PROBE] getDoc FAIL (try1):", e1?.code, e1?.message);
+
+        await auth.currentUser?.getIdToken(true);
+        await sleep(1200);
+
+        try {
+          const snap2 = await getDoc(doc(db, "events", testId));
+          console.log("[ADMIN PROBE] getDoc OK (try2):", snap2.exists());
+        } catch (e2: any) {
+          console.log("[ADMIN PROBE] getDoc FAIL (try2):", e2?.code, e2?.message);
+        }
       }
 
       setLoading(false);
