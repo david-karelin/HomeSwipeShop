@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
 import { db } from "../../firebase";
+import { ensureUser } from "../../firestoreService";
 
 type EventType =
   | "session_start"
@@ -103,6 +104,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     setLoading(true);
     setError(null);
     try {
+      await ensureUser();
       const map = await fetchAllStatsSince(since, TYPES);
       setStats(map);
     } catch (e: any) {

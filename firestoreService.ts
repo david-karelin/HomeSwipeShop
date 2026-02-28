@@ -19,7 +19,7 @@ import { signInAnonymously } from "firebase/auth";
 import { auth, db } from "./firebase";
 import type { Product } from "./types";
 
-async function ensureUser() {
+export async function ensureUser() {
   if (!auth.currentUser) {
     await signInAnonymously(auth);
   }
