@@ -95,7 +95,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   setPostBuyLeadOpen,
   onOpenProduct,
 }) => {
-  const [pendingPostBuy, setPendingPostBuy] = useState(false);
+  const [pendingBuy, setPendingBuy] = useState<Product | null>(null);
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
 
   // Prefill email from localStorage
@@ -107,31 +107,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   useEffect(() => {
     if (open) return;
-    setPendingPostBuy(false);
+    setPendingBuy(null);
     setPostBuyLeadOpen(false);
   }, [open, setPostBuyLeadOpen]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const maybeShow = () => {
-      if (!pendingPostBuy) return;
-      setPostBuyLeadOpen(true);
-      setPendingPostBuy(false);
-    };
-
-    const onFocus = () => maybeShow();
-    const onVis = () => {
-      if (!document.hidden) maybeShow();
-    };
-
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [open, pendingPostBuy, setPostBuyLeadOpen, setPendingPostBuy]);
 
   // Hide panel after successful lead
   useEffect(() => {
@@ -145,14 +123,6 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
     // Open outbound immediately
     window.open(url, "_blank", "noopener,noreferrer");
-
-    setLastBoughtName(product.name ?? "");
-
-    const already = localStorage.getItem("seligo_lead_saved") === "1";
-    if (!already) {
-      setPendingPostBuy(true);
-      setPostBuyLeadOpen(false);
-    }
 
     // Log buy_click with clear source
     void Firestore.logEvent({
@@ -244,6 +214,59 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
               <div className="text-xl font-black text-slate-900">${subtotal.toFixed(2)}</div>
             </div>
 
+            {pendingBuy && (
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-black text-slate-900">
+                      Want this cart + cheaper alternatives emailed?
+                    </div>
+                    <div className="text-sm text-slate-600 mt-1">
+                      We’ll send links + price drops. No spam.
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setPendingBuy(null)}
+                    className="h-9 w-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+                    aria-label="Dismiss"
+                    title="Dismiss"
+                  >
+                    <span className="text-slate-700 font-black">×</span>
+                  </button>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleBuy(pendingBuy);
+                      setPendingBuy(null);
+                    }}
+                    className="flex-1 h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
+                  >
+                    <span>Open retailer</span>
+                    <span className="opacity-90">↗</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPostBuyLeadOpen(true);
+                    }}
+                    className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
+                  >
+                    Email me links
+                  </button>
+                </div>
+
+                <div className="mt-3 text-[11px] text-slate-400 leading-snug">
+                  Tip: If you drop your email once, it becomes 1-tap next time.
+                </div>
+              </div>
+            )}
+
             {postBuyLeadOpen ? (
               leadStatus === "saved" ? (
                 <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
@@ -308,7 +331,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         </div>
                       </div>
                       <button
-                        onClick={() => void handleBuy(p)}
+                        onClick={() => setPendingBuy(p)}
                         className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition flex items-center gap-1"
                       >
                         <span>Buy</span>
