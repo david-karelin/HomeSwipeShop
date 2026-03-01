@@ -211,6 +211,51 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
               <div className="text-xl font-black text-slate-900">${subtotal.toFixed(2)}</div>
             </div>
 
+            {postBuyLeadOpen ? (
+              leadStatus === "saved" ? (
+                <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                  <div className="font-black text-emerald-700">Alerts enabled ✅</div>
+                  <div className="text-sm text-emerald-700/80 mt-1">
+                    We’ll email you if this item drops in price or a close alternative is cheaper.
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="font-black text-slate-900">Get price-drop alerts for this item</div>
+                  <div className="text-sm text-slate-600 mt-1">
+                    We’ll email you if it drops — or if a similar item is cheaper.
+                  </div>
+
+                  {leadEmail?.trim() ? (
+                    <div className="mt-3 text-xs text-slate-600">
+                      Sending alerts to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
+                    </div>
+                  ) : (
+                    <input
+                      value={leadEmail}
+                      onChange={(e) => setLeadEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="mt-3 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
+                    />
+                  )}
+
+                  {leadError && <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>}
+
+                  <button
+                    onClick={() => void handleLeadClick()}
+                    disabled={leadStatus === "saving"}
+                    className="mt-3 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
+                  >
+                    {leadStatus === "saving" ? "Saving..." : leadEmail?.trim() ? "Enable alerts" : "Get alerts"}
+                  </button>
+
+                  <div className="text-[11px] text-slate-400 mt-3 leading-snug">
+                    No spam. Unsubscribe anytime.
+                  </div>
+                </div>
+              )
+            ) : null}
+
             {(cart.length > 0 || wishlist.length > 0) && (
               <div className="mt-4 space-y-3">
                 {cart.length > 0 &&
@@ -229,9 +274,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       </div>
                       <button
                         onClick={() => void handleBuy(p)}
-                        className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition"
+                        className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition flex items-center gap-1"
                       >
-                        Buy
+                        <span>Buy</span>
+                        <span className="opacity-90">↗</span>
                       </button>
                     </div>
                   ))}
@@ -272,52 +318,6 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 )}
               </div>
             )}
-
-            {postBuyLeadOpen ? (
-              leadStatus === "saved" ? (
-                <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                  <div className="font-black text-emerald-700">Alerts enabled ✅</div>
-                  <div className="text-sm text-emerald-700/80 mt-1">
-                    We’ll email you if this item drops in price or a close alternative is cheaper.
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="font-black text-slate-900">Get price-drop alerts for this item</div>
-                  <div className="text-sm text-slate-600 mt-1">
-                    We’ll email you if it drops — or if a similar item is cheaper.
-                  </div>
-
-                  {leadEmail?.trim() ? (
-                    <div className="mt-3 text-xs text-slate-600">
-                      Sending alerts to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
-                    </div>
-                  ) : (
-                    <input
-                      value={leadEmail}
-                      onChange={(e) => setLeadEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="mt-3 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
-                    />
-                  )}
-
-                  {leadError && (
-                    <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>
-                  )}
-                  <button
-                    onClick={() => void handleLeadClick()}
-                    disabled={leadStatus === "saving"}
-                    className="mt-3 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
-                  >
-                    {leadStatus === "saving" ? "Saving..." : leadEmail?.trim() ? "Enable alerts" : "Get alerts"}
-                  </button>
-
-                  <div className="text-[11px] text-slate-400 mt-3 leading-snug">
-                    No spam. Unsubscribe anytime.
-                  </div>
-                </div>
-              )
-            ) : null}
 
             <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4">
               <div className="text-[11px] text-slate-500 leading-relaxed">
