@@ -351,6 +351,8 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isAlgorithmRunning, setIsAlgorithmRunning] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [descOpen, setDescOpen] = useState(false);
+  const [returnToCheckout, setReturnToCheckout] = useState(false);
   const [discoveryStep, setDiscoveryStep] = useState(0);
   const [cursor, setCursor] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -365,9 +367,9 @@ const App: React.FC = () => {
   const [roomScanPicks, setRoomScanPicks] = useState<RoomScanPick[]>([]);
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [undoCount, setUndoCount] = useState(0);
+  const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
   const swipedRef = useRef<Set<string>>(new Set());
   const impressedRef = useRef<Set<string>>(new Set());
-  const openedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
   const roomScanImpressedRef = useRef<Set<string>>(new Set());
   const refineLockRef = useRef(false);
@@ -385,18 +387,6 @@ const App: React.FC = () => {
       if (allowed.has(k)) out[k] = obj[k];
     }
     return out;
-  };
-
-  const getOrCreateSessionId = () => {
-    const key = "seligo_session_id";
-    let id = localStorage.getItem(key);
-    if (!id) {
-      id = (crypto as any).randomUUID
-        ? crypto.randomUUID()
-        : String(Date.now()) + Math.random().toString(16).slice(2);
-      localStorage.setItem(key, id);
-    }
-    return id;
   };
 
   const goView = (next: AppState, source = "nav") => {
@@ -459,6 +449,10 @@ const App: React.FC = () => {
       document.body.style.touchAction = prevTouchAction;
     };
   }, [selectedProduct]);
+
+  useEffect(() => {
+    setDescOpen(false);
+  }, [selectedProduct?.id]);
 
   const logLocalActivity = (kind: LocalActivityKind) => {
     setActivityLog((prev) => {
@@ -766,26 +760,57 @@ const App: React.FC = () => {
       setCurrentIndex(i => i + 1);
       return;
     }
+    openProductOverlay(currentProduct, { view: "browsing", source: "feed" });
+  };
 
-    const sid = getOrCreateSessionId();
-    const key = `${sid}:${currentProduct.id}`;
-
-    if (!openedRef.current.has(key)) {
-      openedRef.current.add(key);
-      void Firestore.logEvent({
-        type: "product_open",
-        productId: currentProduct.id,
-        source: "feed",
-        view: "browsing",
-        meta: {
-          category: currentProduct.category ?? "",
-          tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
-          price: Number(currentProduct.price ?? 0),
-        },
-      }).catch(console.warn);
+  function openProductOverlay(
+    product: Product,
+    ctx?: { view?: string; source?: string; closeCheckout?: boolean }
+  ) {
+    if (ctx?.closeCheckout) {
+      setReturnToCheckout(true);
+      setShowCheckout(false);
     }
 
-    setSelectedProduct(currentProduct);
+    void Firestore.logEvent({
+      type: "product_open",
+      productId: product.id,
+      view: ctx?.view ?? "browsing",
+      source: ctx?.source ?? "unknown",
+      meta: {
+        category: product.category ?? "",
+        tags: Array.isArray(product.tags) ? product.tags : [],
+        price: Number(product.price ?? 0),
+      },
+    }).catch(console.warn);
+
+    setSelectedProduct(product);
+  }
+
+  function openProductOverlayFromCheckout(p: Product) {
+    if (showCheckout) {
+      setReturnToCheckout(true);
+      setShowCheckout(false);
+    }
+
+    void Firestore.logEvent({
+      type: "product_open",
+      productId: p.id,
+      view: "checkout",
+      source: "wishlist_open",
+      meta: { category: p.category ?? "", price: Number(p.price ?? 0) },
+    }).catch(console.warn);
+
+    setSelectedProduct(p);
+  }
+
+  const closeProductOverlay = () => {
+    setSelectedProduct(null);
+
+    if (returnToCheckout) {
+      setReturnToCheckout(false);
+      setShowCheckout(true);
+    }
   };
 
   const handleAction = async (action: 'wishlist' | 'cart', source: string = "style_match_modal") => {
@@ -1338,6 +1363,8 @@ const App: React.FC = () => {
           wishlistCount: userPrefs.wishlist.length,
         },
       }).catch(console.warn);
+      localStorage.setItem("seligo_lead_email", email);
+      localStorage.setItem("seligo_lead_saved", "1");
       setLeadStatus("saved");
       return true;
     } catch (e) {
@@ -1760,7 +1787,7 @@ const App: React.FC = () => {
             <button
               className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
               aria-label="Close"
-              onClick={() => setSelectedProduct(null)}
+              onClick={closeProductOverlay}
             />
 
             <div
@@ -1782,7 +1809,7 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/0 to-transparent" />
 
                   <button
-                    onClick={() => setSelectedProduct(null)}
+                    onClick={closeProductOverlay}
                     className="absolute top-4 left-4 h-10 w-10 rounded-2xl bg-white/85 backdrop-blur-xl border border-white/40 flex items-center justify-center"
                     aria-label="Back"
                   >
@@ -1817,9 +1844,39 @@ const App: React.FC = () => {
                     </div>
                   )}
 
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2 text-slate-700 font-bold">
+                      Ships via retailer
+                    </div>
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2 text-slate-700 font-bold">
+                      Secure checkout on retailer site
+                    </div>
+                  </div>
+
                   {selectedProduct.description && (
                     <div className="mt-4 text-[13px] text-slate-600 leading-relaxed">
-                      {selectedProduct.description}
+                      <div
+                        className="whitespace-pre-wrap"
+                        style={
+                          descOpen
+                            ? {}
+                            : {
+                                maxHeight: "4.8em",
+                                overflow: "hidden",
+                              }
+                        }
+                      >
+                        {selectedProduct.description}
+                      </div>
+                      {String(selectedProduct.description).length > 140 && (
+                        <button
+                          onClick={() => setDescOpen((v) => !v)}
+                          className="mt-2 text-xs font-extrabold text-slate-900"
+                          type="button"
+                        >
+                          {descOpen ? "Show less" : "Read more"}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1832,7 +1889,7 @@ const App: React.FC = () => {
                     <button
                       onClick={() => {
                         handleAction("wishlist", "product_sheet");
-                        setSelectedProduct(null);
+                        closeProductOverlay();
                       }}
                       className="h-12 rounded-2xl bg-slate-100 text-slate-900 font-extrabold"
                     >
@@ -1842,12 +1899,14 @@ const App: React.FC = () => {
                     <button
                       onClick={() => {
                         handleAction("cart", "product_sheet");
-                        setSelectedProduct(null);
+                        closeProductOverlay();
                       }}
-                      className="h-12 rounded-2xl text-white font-extrabold"
+                      className="h-12 rounded-2xl text-white font-extrabold flex items-center justify-center gap-2"
                       style={{ background: "var(--seligo-cta)" }}
                     >
-                      Add to Bag
+                      <span>Add to Bag</span>
+                      <span className="opacity-90">•</span>
+                      <span>${Number(selectedProduct.price || 0).toFixed(2)}</span>
                     </button>
                   </div>
 
@@ -2245,6 +2304,7 @@ const App: React.FC = () => {
       <CheckoutLinksModal
         open={showCheckout}
         onClose={() => setShowCheckout(false)}
+        onOpenProduct={openProductOverlayFromCheckout}
         onPrivacy={() => {
           setShowCheckout(false);
           goView("privacy", "checkout_footer");
@@ -2265,52 +2325,55 @@ const App: React.FC = () => {
         leadStatus={leadStatus}
         leadError={leadError}
         onSubmitLead={submitLead}
+        postBuyLeadOpen={postBuyLeadOpen}
+        setPostBuyLeadOpen={setPostBuyLeadOpen}
       />
 
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
 
-      {/* Bottom Navigation */}
-      <nav
-        className="sticky bottom-0 z-[300] bg-white/90 backdrop-blur-xl border-t border-slate-100"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <div className="h-[4.75rem] px-6 flex items-center justify-between">
-          <NavItem
-            active={view === "browsing"}
-            label="Explore"
-            onClick={() => goView("browsing")}
-            icon={<Compass className="w-6 h-6" />}
-          />
+      {!showCheckout && !selectedProduct && (
+        <nav
+          className="sticky bottom-0 z-[300] bg-white/90 backdrop-blur-xl border-t border-slate-100"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <div className="h-[4.75rem] px-6 flex items-center justify-between">
+            <NavItem
+              active={view === "browsing"}
+              label="Explore"
+              onClick={() => goView("browsing")}
+              icon={<Compass className="w-6 h-6" />}
+            />
 
-          <NavItem
-            active={view === "profile"}
-            label="Insights"
-            onClick={() => goView("profile")}
-            icon={<BrainCircuit className="w-6 h-6" />}
-          />
+            <NavItem
+              active={view === "profile"}
+              label="Insights"
+              onClick={() => goView("profile")}
+              icon={<BrainCircuit className="w-6 h-6" />}
+            />
 
-          <NavItem
-            active={view === "roomscan"}
-            label="RoomScan"
-            onClick={() => goView("roomscan")}
-            icon={<Scan className="w-6 h-6" />}
-          />
+            <NavItem
+              active={view === "roomscan"}
+              label="RoomScan"
+              onClick={() => goView("roomscan")}
+              icon={<Scan className="w-6 h-6" />}
+            />
 
-          <NavItem
-            active={view === "cart"}
-            label="Bag"
-            onClick={() => goView("cart")}
-            icon={
-              <div className="relative">
-                <ShoppingBag className="w-6 h-6" />
-                {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--seligo-primary)] rounded-full border-2 border-white" />
-                )}
-              </div>
-            }
-          />
-        </div>
-      </nav>
+            <NavItem
+              active={view === "cart"}
+              label="Bag"
+              onClick={() => goView("cart")}
+              icon={
+                <div className="relative">
+                  <ShoppingBag className="w-6 h-6" />
+                  {(userPrefs.cart.length + userPrefs.wishlist.length) > 0 && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--seligo-primary)] rounded-full border-2 border-white" />
+                  )}
+                </div>
+              }
+            />
+          </div>
+        </nav>
+      )}
       </div>
       </div>
     </div>

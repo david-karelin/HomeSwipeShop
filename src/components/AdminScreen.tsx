@@ -83,6 +83,7 @@ const pairs = [
   ["checkout_item_open", "checkout_open"],
   ["buy_click", "checkout_open"],
   ["lead_submit", "checkout_open"],
+  ["lead_submit", "buy_click"],
   ["scan_success", "session_start"],
   ["scan_apply", "scan_success"],
   ["share_click", "scan_apply"],
@@ -226,6 +227,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const outboundRate = pct(sessNum("checkout_item_open", "checkout_open"), sess("checkout_open"));
   const buyRate      = pct(sessNum("buy_click", "checkout_open"), sess("checkout_open"));
   const leadRate     = pct(sessNum("lead_submit", "checkout_open"), sess("checkout_open"));
+  const leadPerBuy   = pct(sessNum("lead_submit", "buy_click"), sess("buy_click"));
 
   const scanSuccess  = pct(sessNum("scan_success", "session_start"), sess("session_start"));
   const pickSave     = pct(sessNum("pick_save", "pick_impression"), sess("pick_impression"));
@@ -362,6 +364,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Lead from scan (lead_submit / scan_apply)</span>
             <span className="font-black text-slate-900">{leadFromScan}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per buy (lead_submit / buy_click)</span>
+            <span className="font-black text-slate-900">{leadPerBuy}</span>
           </div>
         </div>
       </div>

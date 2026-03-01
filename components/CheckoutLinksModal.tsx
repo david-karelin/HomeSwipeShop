@@ -1,10 +1,12 @@
 import React, { useEffect } from "react";
+import { X } from "lucide-react";
 import type { Product } from "../types";
 import * as Firestore from "../firestoreService";
 
 const AMAZON_TAG = import.meta.env.VITE_AMAZON_ASSOC_TAG || "";
 
-type Props = {
+
+type CheckoutLinksModalProps = {
   open: boolean;
   onClose: () => void;
   onPrivacy: () => void;
@@ -13,13 +15,14 @@ type Props = {
   cart: Product[];
   wishlist?: Product[];
   subtotal: number;
-
-  // lead capture
   leadEmail: string;
   setLeadEmail: (v: string) => void;
   leadStatus: "idle" | "saving" | "saved" | "error";
   leadError: string;
   onSubmitLead: () => Promise<boolean>;
+  postBuyLeadOpen: boolean;
+  setPostBuyLeadOpen: (v: boolean) => void;
+  onOpenProduct?: (p: Product) => void; // open your Product Details overlay
 };
 
 function buildAmazonSearchUrl(p: Product) {
@@ -36,66 +39,45 @@ function buildAmazonAsinUrl(asin: string) {
 function getPurchaseUrl(p: Product): string {
   const asin = (p.asin || "").trim();
   if (asin.length === 10) return buildAmazonAsinUrl(asin);
-
   const url = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
   return url || buildAmazonSearchUrl(p);
 }
 
-async function openWithTracking(url: string, payload: {
-  type: "buy_click" | "checkout_item_open";
-  view: string;
-  source: string;
-  productId: string;
-  category?: string;
-  price?: number;
-  purchaseUrl: string;
-}) {
-  await Promise.allSettled([
-    Firestore.logEvent({
-      type: payload.type,
-      view: payload.view,
-      source: payload.source,
-      productId: payload.productId,
-      purchaseUrl: payload.purchaseUrl,
-      meta: {
-        category: payload.category ?? "",
-        price: Number(payload.price ?? 0),
-      },
-    }),
-  ]);
+async function openWithTracking(
+  url: string,
+  payload: {
+    type: "buy_click" | "checkout_item_open";
+    view: string;
+    source: string;
+    productId: string;
+    category?: string;
+    price?: number;
+    purchaseUrl: string;
+  },
+  opts?: {
+    afterOpen?: () => void;
+  }
+) {
+  // Open immediately to avoid popup blocking
   window.open(url, "_blank", "noopener,noreferrer");
+  opts?.afterOpen?.();
+
+  // Log asynchronously; don't block UI
+  void Firestore.logEvent({
+    type: payload.type,
+    view: payload.view,
+    source: payload.source,
+    productId: payload.productId,
+    purchaseUrl: payload.purchaseUrl,
+    meta: {
+      category: payload.category ?? "",
+      price: Number(payload.price ?? 0),
+    },
+  }).catch(console.warn);
 }
 
-async function handleBuy(product: Product) {
-  const url = getPurchaseUrl(product);
-  if (!url) return;
 
-  await Promise.allSettled([
-    Firestore.logEvent({
-      type: "checkout_item_open",
-      view: "checkout",
-      source: "checkout_item",
-      productId: product.id,
-      purchaseUrl: url,
-      meta: {
-        category: product.category ?? "",
-        price: Number(product.price ?? 0),
-      },
-    }),
-  ]);
-
-  await openWithTracking(url, {
-    type: "buy_click",
-    view: "checkout",
-    source: "checkout_item",
-    productId: product.id,
-    category: product.category,
-    price: Number(product.price ?? 0),
-    purchaseUrl: url,
-  });
-}
-
-const CheckoutLinksModal: React.FC<Props> = ({
+const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   open,
   onClose,
   onPrivacy,
@@ -109,7 +91,50 @@ const CheckoutLinksModal: React.FC<Props> = ({
   leadStatus,
   leadError,
   onSubmitLead,
+  postBuyLeadOpen,
+  setPostBuyLeadOpen,
+  onOpenProduct,
 }) => {
+  // Prefill email from localStorage
+  useEffect(() => {
+    if (!open) return;
+    const saved = localStorage.getItem("seligo_lead_email");
+    if (saved && !leadEmail) setLeadEmail(saved);
+  }, [open, leadEmail, setLeadEmail]);
+
+  useEffect(() => {
+    if (!open) setPostBuyLeadOpen(false);
+  }, [open, setPostBuyLeadOpen]);
+
+  // Hide panel after successful lead
+  useEffect(() => {
+    if (leadStatus === "saved") setPostBuyLeadOpen(false);
+  }, [leadStatus, setPostBuyLeadOpen]);
+
+
+  async function handleBuy(product: Product) {
+    const url = getPurchaseUrl(product);
+    if (!url) return;
+
+    // Open outbound immediately
+    window.open(url, "_blank", "noopener,noreferrer");
+    const already = localStorage.getItem("seligo_lead_saved") === "1";
+    if (!already) setPostBuyLeadOpen(true);
+
+    // Log buy_click with clear source
+    void Firestore.logEvent({
+      type: "buy_click",
+      view: "checkout",
+      source: "cart_buy",
+      productId: product.id,
+      purchaseUrl: url,
+      meta: {
+        category: product.category ?? "",
+        price: Number(product.price ?? 0),
+      },
+    }).catch(console.warn);
+  }
+
   const handleLeadClick = async () => {
     await onSubmitLead();
   };
@@ -121,207 +146,211 @@ const CheckoutLinksModal: React.FC<Props> = ({
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const prevent = (e: TouchEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("[data-modal-scroll='true']")) return;
-      e.preventDefault();
-    };
-    document.addEventListener("touchmove", prevent, { passive: false });
-
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    window.addEventListener("keydown", onKeyDown);
+
+    const prevent = (e: TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      const scrollEl = target?.closest?.('[data-modal-scroll="true"]');
+      if (!scrollEl) e.preventDefault();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("touchmove", prevent, { passive: false });
 
     return () => {
       document.body.style.overflow = prev;
-      document.removeEventListener("touchmove", prevent as any);
-      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("touchmove", prevent);
     };
   }, [open, onClose]);
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-3 sm:p-4 select-none"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="max-h-[92vh] w-full max-w-lg overflow-hidden flex flex-col rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl">
-        {/* Header (always visible) */}
-        <div className="shrink-0 p-4 border-b border-slate-100">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-2xl font-black text-slate-900">Checkout links</div>
-              <div className="text-slate-500 text-sm mt-1">
-                This demo opens product pages (real checkout coming later).
+    <div className="fixed inset-0 z-[9999] pointer-events-auto">
+      <button
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        aria-label="Close"
+        onClick={onClose}
+      />
+
+      <div
+        className="absolute left-0 right-0 bottom-0 mx-auto w-full max-w-md"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="rounded-t-[2.5rem] bg-white shadow-2xl border border-slate-100 overflow-hidden">
+          <div className="pt-3 pb-2 flex justify-center">
+            <div className="h-1.5 w-12 rounded-full bg-slate-200" />
+          </div>
+
+          <div className="px-6 pb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xl font-extrabold text-slate-900">Checkout links</div>
+                <div className="text-sm text-slate-600 mt-1">
+                  This demo opens product pages (real checkout coming later).
+                </div>
               </div>
+
+              <button
+                onClick={onClose}
+                className="h-10 w-10 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5 text-slate-700" />
+              </button>
+            </div>
+          </div>
+
+          <div className="max-h-[62vh] overflow-y-auto no-scrollbar px-6 pb-6" data-modal-scroll="true">
+            <div className="mt-1 rounded-2xl border border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
+              <div className="text-xs font-black uppercase tracking-widest text-slate-400">Subtotal</div>
+              <div className="text-xl font-black text-slate-900">${subtotal.toFixed(2)}</div>
             </div>
 
-            <button
-              onClick={onClose}
-              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
+            {(cart.length > 0 || wishlist.length > 0) && (
+              <div className="mt-4 space-y-3">
+                {cart.length > 0 &&
+                  cart.map((p) => (
+                    <div key={p.id} className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3">
+                      <img
+                        src={p.imageUrl}
+                        alt={p.name}
+                        className="w-14 h-14 rounded-xl object-cover bg-slate-100"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-slate-900 truncate">{p.name}</div>
+                        <div className="text-xs text-slate-500 truncate">
+                          {p.brand ?? "Seligo.AI"} • ${Number(p.price ?? 0).toFixed(2)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => void handleBuy(p)}
+                        className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition"
+                      >
+                        Buy
+                      </button>
+                    </div>
+                  ))}
 
-          <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
-            <div className="text-xs font-black uppercase tracking-widest text-slate-400">Subtotal</div>
-            <div className="text-xl font-black text-slate-900">${subtotal.toFixed(2)}</div>
-          </div>
-        </div>
-
-        {/* Scroll body (everything that can grow) */}
-        {(cart.length > 0 || wishlist.length > 0) && (
-          <div className="min-h-0 flex-1 overflow-y-auto p-4" data-modal-scroll="true">
-            <div className="space-y-3">
-              {cart.length > 0 &&
-                cart.map((p) => (
-                <div key={p.id} className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3">
-                  <img
-                    src={p.imageUrl}
-                    alt={p.name}
-                    className="w-14 h-14 rounded-xl object-cover bg-slate-100"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-black text-slate-900 truncate">{p.name}</div>
-                    <div className="text-xs text-slate-500 truncate">
-                      {p.brand ?? "Seligo.AI"} • ${Number(p.price ?? 0).toFixed(2)}
+                {wishlist.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
+                      Saved for later
+                    </div>
+                    <div className="space-y-3">
+                      {wishlist.map((p) => (
+                        <div
+                          key={`${p.id}-wish`}
+                          className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3 opacity-80"
+                        >
+                          <img
+                            src={p.imageUrl}
+                            alt={p.name}
+                            className="w-12 h-12 rounded-xl object-cover bg-slate-100"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                            <div className="text-xs text-slate-500 truncate">${Number(p.price ?? 0).toFixed(2)}</div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              onClose();
+                              onOpenProduct?.(p);
+                            }}
+                            className="shrink-0 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-widest hover:bg-slate-200"
+                          >
+                            Open
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {postBuyLeadOpen ? (
+              leadStatus === "saved" ? (
+                <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                  <div className="font-black text-emerald-700">You’re on the list ✅</div>
+                  <div className="text-sm text-emerald-700/80 mt-1">
+                    Thanks — we’ll email you when checkout is available.
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="font-black text-slate-900">Want price-drop alerts + alternatives?</div>
+                  <div className="text-sm text-slate-600 mt-1">
+                    Drop your email and we’ll notify you if this item’s price changes.
+                  </div>
+                  <input
+                    value={leadEmail}
+                    onChange={(e) => setLeadEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="mt-3 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
+                  />
+                  {leadError && (
+                    <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>
+                  )}
                   <button
-                    onClick={() => void handleBuy(p)}
-                    className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition"
+                    onClick={() => void handleLeadClick()}
+                    disabled={leadStatus === "saving"}
+                    className="mt-3 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
                   >
-                    View product
+                    {leadStatus === "saving" ? "Saving..." : "Get alerts"}
                   </button>
                 </div>
-              ))}
+              )
+            ) : null}
 
-              {wishlist.length > 0 && (
-                <div className="pt-2">
-                  <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                    Saved for later
-                  </div>
-
-                  <div className="space-y-3">
-                    {wishlist.map((p) => (
-                      <div
-                        key={`${p.id}-wish`}
-                        className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3 opacity-80"
-                      >
-                        <img
-                          src={p.imageUrl}
-                          alt={p.name}
-                          className="w-12 h-12 rounded-xl object-cover bg-slate-100"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                          <div className="text-xs text-slate-500 truncate">${Number(p.price ?? 0).toFixed(2)}</div>
-                        </div>
-                        <button
-                          onClick={() => void handleBuy(p)}
-                          className="shrink-0 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-widest hover:bg-slate-200"
-                        >
-                          View product
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
-        <div className="shrink-0 p-4 border-t border-slate-100">
-          <div className="mt-1">
-            <div className="text-sm font-black text-slate-900">Want one-click checkout later?</div>
-            <div className="text-sm text-slate-500 mt-1">
-              Drop your email and we’ll notify you when real checkout is live.
-            </div>
-
-            {leadStatus === "saved" ? (
-              <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                <div className="font-black text-emerald-700">You’re on the list ✅</div>
-                <div className="text-sm text-emerald-700/80 mt-1">
-                  Thanks — we’ll email you when checkout is available.
-                </div>
+            <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4">
+              <div className="text-[11px] text-slate-500 leading-relaxed">
+                Seligo may earn a commission if you buy through links. Links may become affiliate links later.
               </div>
-            ) : (
-              <>
-                <input
-                  value={leadEmail}
-                  onChange={(e) => setLeadEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="mt-4 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
-                />
-
-                {leadError && (
-                  <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>
-                )}
-
+              <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400">
                 <button
-                  onClick={() => void handleLeadClick()}
-                  disabled={leadStatus === "saving"}
-                  className="mt-4 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
+                  type="button"
+                  onClick={onPrivacy}
+                  className="hover:text-slate-600"
                 >
-                  {leadStatus === "saving" ? "Saving..." : "Notify me"}
+                  Privacy
                 </button>
-
-                <div className="text-[11px] text-slate-400 mt-3 leading-snug">
-                  We’ll only use this to contact you about checkout. No spam.
-                </div>
-
-              </>
-            )}
-          </div>
-
-          <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4">
-            <div className="text-[11px] text-slate-500 leading-relaxed">
-              Seligo may earn a commission if you buy through links. Links may become affiliate links later.
-            </div>
-
-            <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400">
-              <button
-                type="button"
-                onClick={onPrivacy}
-                className="hover:text-slate-600"
-              >
-                Privacy
-              </button>
-              <button
-                type="button"
-                onClick={onTerms}
-                className="hover:text-slate-600"
-              >
-                Terms
-              </button>
-              <button
-                type="button"
-                onClick={onDisclosure}
-                className="hover:text-slate-600"
-              >
-                Disclosure
-              </button>
+                <button
+                  type="button"
+                  onClick={onTerms}
+                  className="hover:text-slate-600"
+                >
+                  Terms
+                </button>
+                <button
+                  type="button"
+                  onClick={onDisclosure}
+                  className="hover:text-slate-600"
+                >
+                  Disclosure
+                </button>
+              </div>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="mt-5 w-full py-4 rounded-2xl bg-slate-900 text-white font-black hover:bg-slate-800 active:scale-95 transition"
+          <div
+            className="sticky bottom-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-6 pt-4"
+            style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
           >
-            Back to browsing
-          </button>
+            <button
+              onClick={onClose}
+              className="w-full h-12 rounded-2xl bg-slate-900 text-white font-extrabold"
+            >
+              Back to browsing
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
-};
-
+}
 export default CheckoutLinksModal;
