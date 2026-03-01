@@ -1346,6 +1346,8 @@ const App: React.FC = () => {
 
     setLeadStatus("saving");
     try {
+      await Firestore.ensureUser();
+
       await Firestore.saveLead({
         email,
         subtotal,
@@ -1363,12 +1365,16 @@ const App: React.FC = () => {
           wishlistCount: userPrefs.wishlist.length,
         },
       }).catch(console.warn);
-      localStorage.setItem("seligo_lead_email", email);
-      localStorage.setItem("seligo_lead_saved", "1");
+      try {
+        localStorage.setItem("seligo_lead_email", email);
+        localStorage.setItem("seligo_lead_saved", "1");
+      } catch {
+        // ignore storage failures (incognito / blocked storage)
+      }
       setLeadStatus("saved");
       return true;
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("saveLead failed:", e?.code, e);
       setLeadStatus("error");
       setLeadError("Couldn’t save right now. Try again.");
       return false;

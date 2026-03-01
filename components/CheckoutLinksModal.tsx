@@ -106,6 +106,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   }, [open, leadEmail, setLeadEmail]);
 
   useEffect(() => {
+    if (!open) return;
+    void Firestore.ensureUser().catch(console.warn);
+  }, [open]);
+
+  useEffect(() => {
     if (open) return;
     setPendingBuy(null);
     setPostBuyLeadOpen(false);

@@ -209,13 +209,18 @@ export async function saveLead(payload: {
   view?: string;
 }) {
   const user = await ensureUser();
-
   const email = payload.email.trim().toLowerCase();
 
-  const key = `seligo_firstLeadMs_${email}`;
-  const existing = localStorage.getItem(key);
-  const firstLeadMs = existing ? Number(existing) : Date.now();
-  if (!existing) localStorage.setItem(key, String(firstLeadMs));
+  let firstLeadMs = Date.now();
+  try {
+    const key = `seligo_firstLeadMs_${email}`;
+    const existing = localStorage.getItem(key);
+    firstLeadMs = existing ? Number(existing) : Date.now();
+    if (!existing) localStorage.setItem(key, String(firstLeadMs));
+  } catch {
+    // Incognito / blocked storage: ignore and proceed
+    // firstLeadMs stays as Date.now()
+  }
 
   await setDoc(
     doc(db, "leads", email),
