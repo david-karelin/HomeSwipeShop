@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { Product } from "../types";
 import * as Firestore from "../firestoreService";
@@ -95,6 +95,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   setPostBuyLeadOpen,
   onOpenProduct,
 }) => {
+  const [pendingPostBuy, setPendingPostBuy] = useState(false);
+  const [lastBoughtName, setLastBoughtName] = useState<string>("");
+
   // Prefill email from localStorage
   useEffect(() => {
     if (!open) return;
@@ -103,8 +106,32 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   }, [open, leadEmail, setLeadEmail]);
 
   useEffect(() => {
-    if (!open) setPostBuyLeadOpen(false);
+    if (open) return;
+    setPendingPostBuy(false);
+    setPostBuyLeadOpen(false);
   }, [open, setPostBuyLeadOpen]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const maybeShow = () => {
+      if (!pendingPostBuy) return;
+      setPostBuyLeadOpen(true);
+      setPendingPostBuy(false);
+    };
+
+    const onFocus = () => maybeShow();
+    const onVis = () => {
+      if (!document.hidden) maybeShow();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [open, pendingPostBuy, setPostBuyLeadOpen, setPendingPostBuy]);
 
   // Hide panel after successful lead
   useEffect(() => {
@@ -118,8 +145,14 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
     // Open outbound immediately
     window.open(url, "_blank", "noopener,noreferrer");
+
+    setLastBoughtName(product.name ?? "");
+
     const already = localStorage.getItem("seligo_lead_saved") === "1";
-    if (!already) setPostBuyLeadOpen(true);
+    if (!already) {
+      setPendingPostBuy(true);
+      setPostBuyLeadOpen(false);
+    }
 
     // Log buy_click with clear source
     void Firestore.logEvent({
@@ -221,7 +254,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 </div>
               ) : (
                 <div className="mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="font-black text-slate-900">Get price-drop alerts for this item</div>
+                  <div className="font-black text-slate-900">
+                    Get price-drop alerts for {lastBoughtName || "this item"}
+                  </div>
                   <div className="text-sm text-slate-600 mt-1">
                     We’ll email you if it drops — or if a similar item is cheaper.
                   </div>
