@@ -276,23 +276,31 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
             {postBuyLeadOpen ? (
               leadStatus === "saved" ? (
                 <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                  <div className="font-black text-emerald-700">You’re on the list ✅</div>
+                  <div className="font-black text-emerald-700">Alerts enabled ✅</div>
                   <div className="text-sm text-emerald-700/80 mt-1">
-                    Thanks — we’ll email you when checkout is available.
+                    We’ll email you if this item drops in price or a close alternative is cheaper.
                   </div>
                 </div>
               ) : (
                 <div className="mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="font-black text-slate-900">Want price-drop alerts + alternatives?</div>
+                  <div className="font-black text-slate-900">Get price-drop alerts for this item</div>
                   <div className="text-sm text-slate-600 mt-1">
-                    Drop your email and we’ll notify you if this item’s price changes.
+                    We’ll email you if it drops — or if a similar item is cheaper.
                   </div>
-                  <input
-                    value={leadEmail}
-                    onChange={(e) => setLeadEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="mt-3 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
-                  />
+
+                  {leadEmail?.trim() ? (
+                    <div className="mt-3 text-xs text-slate-600">
+                      Sending alerts to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
+                    </div>
+                  ) : (
+                    <input
+                      value={leadEmail}
+                      onChange={(e) => setLeadEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="mt-3 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
+                    />
+                  )}
+
                   {leadError && (
                     <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>
                   )}
@@ -301,8 +309,12 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     disabled={leadStatus === "saving"}
                     className="mt-3 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
                   >
-                    {leadStatus === "saving" ? "Saving..." : "Get alerts"}
+                    {leadStatus === "saving" ? "Saving..." : leadEmail?.trim() ? "Enable alerts" : "Get alerts"}
                   </button>
+
+                  <div className="text-[11px] text-slate-400 mt-3 leading-snug">
+                    No spam. Unsubscribe anytime.
+                  </div>
                 </div>
               )
             ) : null}
