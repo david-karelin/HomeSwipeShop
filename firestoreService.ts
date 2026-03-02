@@ -15,7 +15,7 @@ import {
   addDoc,
   writeBatch,
 } from "firebase/firestore";
-import { browserSessionPersistence, onIdTokenChanged, setPersistence, signInAnonymously, type User } from "firebase/auth";
+import { browserSessionPersistence, onAuthStateChanged, setPersistence, signInAnonymously, type User } from "firebase/auth";
 import { auth, db } from "./firebase";
 import type { Product } from "./types";
 
@@ -45,58 +45,47 @@ export async function ensureUser(): Promise<User> {
   return _ensureUserPromise;
 }
 
-function waitForIdToken(uid: string) {
-  return new Promise<User>((resolve, reject) => {
-    const unsub = onIdTokenChanged(
-      auth,
-      async (u) => {
-        try {
-          if (!u) return;
-          if (u.uid !== uid) return;
-
-          // Ensure token exists and is retrievable
-          await u.getIdToken();
-
-          unsub();
-          resolve(u);
-        } catch (e) {
-          unsub();
-          reject(e);
-        }
-      },
-      (err) => {
-        unsub();
-        reject(err);
-      }
-    );
-
-    setTimeout(() => {
-      try {
-        unsub();
-      } catch {
-        // ignore
-      }
-      reject(new Error("ID token not ready (timeout)"));
-    }, 8000);
-  });
-}
-
 export function ensureUserReady(): Promise<User> {
   if (readyPromise) return readyPromise;
 
   readyPromise = (async () => {
     const user = await ensureUser();
 
-    await user.getIdToken(true);
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) {
+      await new Promise<void>((resolve, reject) => {
+        const unsub = onAuthStateChanged(
+          auth,
+          (u) => {
+            if (u && u.uid === user.uid) {
+              unsub();
+              resolve();
+            }
+          },
+          (err) => {
+            unsub();
+            reject(err);
+          }
+        );
 
-    const u = await waitForIdToken(user.uid);
+        setTimeout(() => {
+          try {
+            unsub();
+          } catch {
+            // ignore
+          }
+          reject(new Error("Auth state not ready (timeout)"));
+        }, 8000);
+      });
+    }
+
+    await user.getIdToken(true);
 
     await new Promise((r) => setTimeout(r, 0));
 
-    return u;
-  })().catch((err) => {
+    return user;
+  })().catch((e) => {
     readyPromise = null;
-    throw err;
+    throw e;
   });
 
   return readyPromise;
