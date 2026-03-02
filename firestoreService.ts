@@ -15,22 +15,91 @@ import {
   addDoc,
   writeBatch,
 } from "firebase/firestore";
-import { signInAnonymously } from "firebase/auth";
+import { browserSessionPersistence, onIdTokenChanged, setPersistence, signInAnonymously, type User } from "firebase/auth";
 import { auth, db } from "./firebase";
 import type { Product } from "./types";
 
 export { db, auth };
 
-export async function ensureUser() {
-  let user = auth.currentUser;
+let _ensureUserPromise: Promise<User> | null = null;
+let readyPromise: Promise<User> | null = null;
 
-  if (!user) {
-    const cred = await signInAnonymously(auth);
-    user = cred.user;
+export async function ensureUser(): Promise<User> {
+  if (auth.currentUser) return auth.currentUser;
+
+  if (!_ensureUserPromise) {
+    _ensureUserPromise = (async () => {
+      try {
+        await setPersistence(auth, browserSessionPersistence);
+      } catch {
+        // ignore persistence failures
+      }
+
+      const cred = await signInAnonymously(auth);
+      return cred.user;
+    })().finally(() => {
+      _ensureUserPromise = null;
+    });
   }
 
-  await user.getIdToken(true);
-  return user;
+  return _ensureUserPromise;
+}
+
+function waitForIdToken(uid: string) {
+  return new Promise<User>((resolve, reject) => {
+    const unsub = onIdTokenChanged(
+      auth,
+      async (u) => {
+        try {
+          if (!u) return;
+          if (u.uid !== uid) return;
+
+          // Ensure token exists and is retrievable
+          await u.getIdToken();
+
+          unsub();
+          resolve(u);
+        } catch (e) {
+          unsub();
+          reject(e);
+        }
+      },
+      (err) => {
+        unsub();
+        reject(err);
+      }
+    );
+
+    setTimeout(() => {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+      reject(new Error("ID token not ready (timeout)"));
+    }, 8000);
+  });
+}
+
+export function ensureUserReady(): Promise<User> {
+  if (readyPromise) return readyPromise;
+
+  readyPromise = (async () => {
+    const user = await ensureUser();
+
+    await user.getIdToken(true);
+
+    const u = await waitForIdToken(user.uid);
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    return u;
+  })().catch((err) => {
+    readyPromise = null;
+    throw err;
+  });
+
+  return readyPromise;
 }
 
 // Maps Firestore docs to your existing Product type (fills missing fields safely)
@@ -200,6 +269,21 @@ export async function deleteMySwipe(productId: string) {
   await deleteDoc(doc(db, "users", user.uid, "swipes", productId));
 }
 
+function toFiniteNumber(v: any, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function toSafeInt(v: any, fallback = 0) {
+  const n = toFiniteNumber(v, fallback);
+  const i = Math.trunc(n);
+  return Number.isSafeInteger(i) ? i : fallback;
+}
+
+function isPermissionDenied(e: any) {
+  return e?.code === "permission-denied" || String(e?.message ?? "").includes("permission-denied");
+}
+
 export async function saveLead(payload: {
   email: string;
   subtotal: number;
@@ -208,35 +292,37 @@ export async function saveLead(payload: {
   source?: string;
   view?: string;
 }) {
-  const user = await ensureUser();
-  const email = payload.email.trim().toLowerCase();
+  const writeOnce = async () => {
+    const user = await ensureUserReady();
+    const email = payload.email.trim().toLowerCase();
 
-  let firstLeadMs = Date.now();
-  try {
-    const key = `seligo_firstLeadMs_${email}`;
-    const existing = localStorage.getItem(key);
-    firstLeadMs = existing ? Number(existing) : Date.now();
-    if (!existing) localStorage.setItem(key, String(firstLeadMs));
-  } catch {
-    // Incognito / blocked storage: ignore and proceed
-    // firstLeadMs stays as Date.now()
-  }
+    const subtotal = toFiniteNumber(payload.subtotal, 0);
+    const bagCount = toSafeInt(payload.bagCount, 0);
+    const wishlistCount = toSafeInt(payload.wishlistCount, 0);
 
-  await setDoc(
-    doc(db, "leads", email),
-    {
+    await addDoc(collection(db, "leads"), {
       uid: user.uid,
       email,
-      subtotal: payload.subtotal,
-      bagCount: payload.bagCount,
-      wishlistCount: payload.wishlistCount,
-      firstSubmittedAtClientMs: firstLeadMs,
-      lastSubmittedAt: serverTimestamp(),
+      subtotal,
+      bagCount,
+      wishlistCount,
       source: payload.source ?? "checkout_modal",
       view: payload.view ?? "cart",
-    },
-    { merge: true }
-  );
+      createdAt: serverTimestamp(),
+    });
+  };
+
+  try {
+    await writeOnce();
+  } catch (e) {
+    if (isPermissionDenied(e)) {
+      await auth.currentUser?.getIdToken(true).catch(() => {});
+      await new Promise((r) => setTimeout(r, 0));
+      await writeOnce();
+      return;
+    }
+    throw e;
+  }
 }
 
 type EventType =
@@ -322,7 +408,7 @@ export async function logEvent(payload: {
 }) {
   persistUtmIfPresent();
 
-  const user = await ensureUser();
+  const user = await ensureUserReady();
   const sessionId = getOrCreateSessionId();
   const utmRaw = getPersistedUtm();
   const utm =

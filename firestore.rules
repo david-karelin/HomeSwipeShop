@@ -34,6 +34,7 @@ service cloud.firestore {
         && request.resource.data.email is string
         && request.resource.data.email.size() >= 5
         && request.resource.data.subtotal is number
+        && request.resource.data.subtotal == request.resource.data.subtotal
         && request.resource.data.bagCount is int
         && request.resource.data.wishlistCount is int;
 
@@ -43,6 +44,7 @@ service cloud.firestore {
         && request.resource.data.email is string
         && request.resource.data.email.size() >= 5
         && request.resource.data.subtotal is number
+        && request.resource.data.subtotal == request.resource.data.subtotal
         && request.resource.data.bagCount is int
         && request.resource.data.wishlistCount is int;
 

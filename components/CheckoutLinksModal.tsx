@@ -107,7 +107,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    void Firestore.ensureUser().catch(console.warn);
+    void Firestore.ensureUserReady().catch(console.warn);
   }, [open]);
 
   useEffect(() => {
