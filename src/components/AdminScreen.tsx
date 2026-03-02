@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
-import { db, ensureUser } from "../../firestoreService";
+import { db, ensureUserReady } from "../../firestoreService";
 import { fetchRecentEvents, fmtCreatedAt, type AdminEventRow } from "../lib/adminEvents";
+
+const ADMIN_UID = "mzHWZJagqZecDwYbl2B9139zhOZ2";
 
 type EventType =
   | "session_start"
@@ -161,6 +163,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const [recent, setRecent] = useState<AdminEventRow[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentErr, setRecentErr] = useState<string | null>(null);
+  const [uid, setUid] = useState<string | null>(null);
 
   const since = useMemo(() => {
     const now = new Date();
@@ -173,7 +176,8 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     setError(null);
 
     try {
-      await ensureUser();
+      const user = await ensureUserReady();
+      setUid(user.uid);
       const res = await fetchAllStatsSince(since, TYPES, pairs);
       setStats(res);
     } catch (e: any) {
@@ -195,9 +199,12 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
       setRecentLoading(true);
       setRecentErr(null);
       try {
+        const user = await ensureUserReady();
+        if (mounted) setUid(user.uid);
         const rows = await fetchRecentEvents(50);
         if (mounted) setRecent(rows);
       } catch (e: any) {
+        if (mounted) setUid("ERROR");
         if (mounted) setRecentErr(e?.message ?? "Failed to load recent events");
       } finally {
         if (mounted) setRecentLoading(false);
@@ -256,6 +263,14 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         <div>
           <div className="text-2xl font-extrabold text-slate-900">Admin</div>
           <div className="text-sm text-slate-500 mt-1">Last 7 days • session-based funnel</div>
+          <div className="text-xs text-slate-500 mt-1">
+            uid: <span className="font-mono">{uid ?? "…"}</span>{" "}
+            {uid && uid !== "ERROR" && (
+              <span className={uid === ADMIN_UID ? "text-emerald-600" : "text-rose-600"}>
+                {uid === ADMIN_UID ? "ADMIN ✅" : "NOT ADMIN ❌"}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-2">

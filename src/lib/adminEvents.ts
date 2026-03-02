@@ -1,5 +1,6 @@
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { db } from "../../firebase";
+import { ensureUserReady } from "../../firestoreService";
 
 export type AdminEventRow = {
   id: string;
@@ -15,6 +16,7 @@ export type AdminEventRow = {
 };
 
 export async function fetchRecentEvents(n = 50): Promise<AdminEventRow[]> {
+  await ensureUserReady();
   const q = query(collection(db, "events"), orderBy("createdAt", "desc"), limit(n));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
