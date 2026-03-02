@@ -54,7 +54,10 @@ service cloud.firestore {
     match /events/{eventId} {
       function isAdmin() {
         return request.auth != null
-          && request.auth.uid in ["PASTE_ADMIN_UID_HERE"];
+          && (
+            request.auth.token.admin == true
+            || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+          );
       }
 
       function allowedType(t) {
@@ -97,7 +100,7 @@ service cloud.firestore {
             || (request.resource.data.purchaseUrl is string && request.resource.data.purchaseUrl.size() >= 8));
 
       allow get: if isAdmin();
-      allow list: if false;
+  allow list: if isAdmin();
 
       allow update, delete: if false;
     }
