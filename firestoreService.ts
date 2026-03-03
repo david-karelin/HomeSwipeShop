@@ -15,7 +15,7 @@ import {
   addDoc,
   writeBatch,
 } from "firebase/firestore";
-import { browserSessionPersistence, onAuthStateChanged, setPersistence, signInAnonymously, type User } from "firebase/auth";
+import { browserLocalPersistence, onAuthStateChanged, setPersistence, signInAnonymously, type User } from "firebase/auth";
 import { auth, db } from "./firebase";
 import type { Product } from "./types";
 
@@ -30,7 +30,7 @@ export async function ensureUser(): Promise<User> {
   if (!_ensureUserPromise) {
     _ensureUserPromise = (async () => {
       try {
-        await setPersistence(auth, browserSessionPersistence);
+        await setPersistence(auth, browserLocalPersistence);
       } catch {
         // ignore persistence failures
       }
