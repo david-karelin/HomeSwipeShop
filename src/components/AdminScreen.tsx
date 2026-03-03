@@ -35,6 +35,8 @@ type PairKey = `${string}|${string}`;
 type StatsState = {
   byType: Record<string, Stat>;
   pairSessions: Record<PairKey, number>;
+  leadBySource: Record<string, Stat>;
+  leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
 };
 
 function pairKey(num: string, den: string) {
@@ -94,6 +96,10 @@ const pairs = [
   ["pick_dismiss", "pick_impression"],
  ] as const;
 
+const leadSources = ["cart_confirm", "post_buy_panel"] as const;
+type LeadSource = (typeof leadSources)[number];
+const leadSourceSet = new Set<string>(leadSources);
+
 async function fetchAllStatsSince(
   since: Timestamp,
   types: string[],
@@ -101,6 +107,8 @@ async function fetchAllStatsSince(
 ): Promise<{
   byType: Record<string, Stat>;
   pairSessions: Record<PairKey, number>;
+  leadBySource: Record<string, Stat>;
+  leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
 }> {
   const allowed = new Set(types);
 
@@ -109,6 +117,13 @@ async function fetchAllStatsSince(
   for (const t of types) {
     counts[t] = 0;
     sessionSets[t] = new Set<string>();
+  }
+
+  const leadCounts: Record<string, number> = {};
+  const leadSessionSets: Record<string, Set<string>> = {};
+  for (const s of leadSources) {
+    leadCounts[s] = 0;
+    leadSessionSets[s] = new Set<string>();
   }
 
   const qy = query(
@@ -129,6 +144,14 @@ async function fetchAllStatsSince(
 
     const sid = data?.sessionId != null ? String(data.sessionId) : "";
     if (sid) sessionSets[t].add(sid);
+
+    if (t === "lead_submit" && sid) {
+      const src = String(data?.source ?? "");
+      if (leadSourceSet.has(src)) {
+        leadCounts[src] += 1;
+        leadSessionSets[src].add(sid);
+      }
+    }
   });
 
   const valid = sessionSets["session_start"] ?? new Set<string>();
@@ -136,6 +159,9 @@ async function fetchAllStatsSince(
     for (const t of Object.keys(sessionSets)) {
       if (t === "session_start") continue;
       sessionSets[t] = new Set([...sessionSets[t]].filter((sid) => valid.has(sid)));
+    }
+    for (const s of leadSources) {
+      leadSessionSets[s] = new Set([...leadSessionSets[s]].filter((sid) => valid.has(sid)));
     }
   }
 
@@ -152,7 +178,20 @@ async function fetchAllStatsSince(
     );
   }
 
-  return { byType, pairSessions };
+  const leadBySource: Record<string, Stat> = {};
+  for (const s of leadSources) {
+    leadBySource[s] = { count: leadCounts[s] ?? 0, sessions: leadSessionSets[s]?.size ?? 0 };
+  }
+
+  const leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }> = {};
+  for (const s of leadSources) {
+    leadPairSessionsBySource[s] = {
+      perCheckout: intersectionSize(leadSessionSets[s] ?? new Set(), sessionSets["checkout_open"] ?? new Set()),
+      perBuy: intersectionSize(leadSessionSets[s] ?? new Set(), sessionSets["buy_click"] ?? new Set()),
+    };
+  }
+
+  return { byType, pairSessions, leadBySource, leadPairSessionsBySource };
 }
 
 export default function AdminScreen({ onBack }: { onBack: () => void }) {
@@ -233,6 +272,8 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
 
   const byType = stats?.byType ?? {};
   const pairSessions = stats?.pairSessions ?? ({} as Record<PairKey, number>);
+  const leadBySource = stats?.leadBySource ?? {};
+  const leadPairsBySource = stats?.leadPairSessionsBySource ?? {};
 
   const sess = (t: string) => byType[t]?.sessions ?? 0;
   const ev = (t: string) => byType[t]?.count ?? 0;
@@ -249,6 +290,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const buyRate      = pct(sessNum("buy_click", "checkout_open"), sess("checkout_open"));
   const leadRate     = pct(sessNum("lead_submit", "checkout_open"), sess("checkout_open"));
   const leadPerBuy   = pct(sessNum("lead_submit", "buy_click"), sess("buy_click"));
+  const leadPerBuy_cartConfirm = pct(leadPairsBySource["cart_confirm"]?.perBuy ?? 0, sess("buy_click"));
+  const leadPerBuy_postBuyPanel = pct(leadPairsBySource["post_buy_panel"]?.perBuy ?? 0, sess("buy_click"));
+  const leadRate_cartConfirm = pct(leadPairsBySource["cart_confirm"]?.perCheckout ?? 0, sess("checkout_open"));
+  const leadRate_postBuyPanel = pct(leadPairsBySource["post_buy_panel"]?.perCheckout ?? 0, sess("checkout_open"));
 
   const scanSuccess  = pct(sessNum("scan_success", "session_start"), sess("session_start"));
   const pickSave     = pct(sessNum("pick_save", "pick_impression"), sess("pick_impression"));
@@ -352,6 +397,22 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="text-slate-600">Lead rate (lead_submit / checkout_open)</span>
             <span className="font-black text-slate-900">{leadRate}</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead rate (cart_confirm / checkout_open)</span>
+            <span className="font-black text-slate-900">{leadRate_cartConfirm}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead rate (post_buy_panel / checkout_open)</span>
+            <span className="font-black text-slate-900">{leadRate_postBuyPanel}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per buy (cart_confirm / buy_click)</span>
+            <span className="font-black text-slate-900">{leadPerBuy_cartConfirm}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per buy (post_buy_panel / buy_click)</span>
+            <span className="font-black text-slate-900">{leadPerBuy_postBuyPanel}</span>
+          </div>
         </div>
       </div>
 
@@ -393,6 +454,14 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Lead per buy (lead_submit / buy_click)</span>
             <span className="font-black text-slate-900">{leadPerBuy}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per buy (cart_confirm)</span>
+            <span className="font-black text-slate-900">{leadPerBuy_cartConfirm}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per buy (post_buy_panel)</span>
+            <span className="font-black text-slate-900">{leadPerBuy_postBuyPanel}</span>
           </div>
         </div>
       </div>
