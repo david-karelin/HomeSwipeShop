@@ -104,18 +104,24 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const [postBuyPrompted, setPostBuyPrompted] = useState(false);
   const [leadPanelPulse, setLeadPanelPulse] = useState(false);
   const leadPromptLoggedRef = useRef(false);
+  const leadInputRef = useRef<HTMLInputElement | null>(null);
 
   function pulseLeadPanel() {
     setLeadPanelPulse(true);
     window.setTimeout(() => setLeadPanelPulse(false), 900);
   }
 
-  // Prefill email from localStorage
   useEffect(() => {
-    if (!open) return;
-    const saved = localStorage.getItem("seligo_lead_email");
-    if (saved && !leadEmail) setLeadEmail(saved);
-  }, [open, leadEmail, setLeadEmail]);
+    if (!open && !postBuyLeadOpen) return;
+    if (leadEmail?.trim()) return;
+
+    try {
+      const saved = localStorage.getItem("seligo_lead_email") || "";
+      if (saved) setLeadEmail(saved);
+    } catch {
+      // ignore storage failures
+    }
+  }, [open, postBuyLeadOpen, leadEmail]);
 
   useEffect(() => {
     if (!open) return;
@@ -134,6 +140,13 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   useEffect(() => {
     if (leadStatus === "saved") setPostBuyLeadOpen(false);
   }, [leadStatus, setPostBuyLeadOpen]);
+
+  useEffect(() => {
+    if (!postBuyLeadOpen) return;
+    if (leadEmail?.trim()) return;
+    const t = window.setTimeout(() => leadInputRef.current?.focus(), 50);
+    return () => window.clearTimeout(t);
+  }, [postBuyLeadOpen, leadEmail]);
 
   useEffect(() => {
     if (!postBuyLeadOpen) return;
@@ -371,6 +384,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     </div>
                   ) : (
                     <input
+                      ref={leadInputRef}
                       value={leadEmail}
                       onChange={(e) => setLeadEmail(e.target.value)}
                       placeholder="you@example.com"
