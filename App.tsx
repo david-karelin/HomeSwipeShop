@@ -368,6 +368,7 @@ const App: React.FC = () => {
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [undoCount, setUndoCount] = useState(0);
   const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
+  const [leadSource, setLeadSource] = useState<"cart_confirm" | "post_buy_panel" | "checkout_modal">("post_buy_panel");
   const swipedRef = useRef<Set<string>>(new Set());
   const impressedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
@@ -1334,35 +1335,50 @@ const App: React.FC = () => {
 
   const subtotal = userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0);
 
+  const handleLeadEmailChange = (value: string) => {
+    setLeadEmail(value);
+    if (leadStatus === "error") {
+      setLeadStatus("idle");
+      setLeadError("");
+    }
+  };
+
   const submitLead = async (): Promise<boolean> => {
     setLeadError("");
 
-    const email = leadEmail.trim();
+    const email = leadEmail.trim().toLowerCase();
     const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!ok) {
       setLeadError("Enter a valid email.");
       return false;
     }
 
+    if (leadStatus === "saving") return false;
+
+    const emailKnown = !!leadEmail?.trim();
+
     setLeadStatus("saving");
     try {
-      await Firestore.ensureUser();
+      await Firestore.ensureUserReady();
 
       await Firestore.saveLead({
         email,
         subtotal,
         bagCount: userPrefs.cart.length,
         wishlistCount: userPrefs.wishlist.length,
+        source: leadSource,
+        view: "checkout",
       });
-      // Guaranteed lead_submit event after successful save
+
       void Firestore.logEvent({
         type: "lead_submit",
         view: "checkout",
-        source: "lead_form",
+        source: leadSource,
         meta: {
           subtotal,
           bagCount: userPrefs.cart.length,
           wishlistCount: userPrefs.wishlist.length,
+          emailKnown,
         },
       }).catch(console.warn);
       try {
@@ -2327,12 +2343,14 @@ const App: React.FC = () => {
         wishlist={userPrefs.wishlist}
         subtotal={userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0)}
         leadEmail={leadEmail}
-        setLeadEmail={setLeadEmail}
+        setLeadEmail={handleLeadEmailChange}
         leadStatus={leadStatus}
         leadError={leadError}
         onSubmitLead={submitLead}
         postBuyLeadOpen={postBuyLeadOpen}
         setPostBuyLeadOpen={setPostBuyLeadOpen}
+        leadSource={leadSource}
+        setLeadSource={setLeadSource}
       />
 
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />

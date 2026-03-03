@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { Product } from "../types";
 import * as Firestore from "../firestoreService";
@@ -22,6 +22,8 @@ type CheckoutLinksModalProps = {
   onSubmitLead: () => Promise<boolean>;
   postBuyLeadOpen: boolean;
   setPostBuyLeadOpen: (v: boolean) => void;
+  leadSource: "cart_confirm" | "post_buy_panel" | "checkout_modal";
+  setLeadSource: (v: "cart_confirm" | "post_buy_panel" | "checkout_modal") => void;
   onOpenProduct?: (p: Product) => void; // open your Product Details overlay
 };
 
@@ -93,10 +95,14 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   onSubmitLead,
   postBuyLeadOpen,
   setPostBuyLeadOpen,
+  leadSource,
+  setLeadSource,
   onOpenProduct,
 }) => {
   const [pendingBuy, setPendingBuy] = useState<Product | null>(null);
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
+  const [postBuyPrompted, setPostBuyPrompted] = useState(false);
+  const leadPromptLoggedRef = useRef(false);
 
   // Prefill email from localStorage
   useEffect(() => {
@@ -114,6 +120,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     if (open) return;
     setPendingBuy(null);
     setPostBuyLeadOpen(false);
+    setPostBuyPrompted(false);
+    leadPromptLoggedRef.current = false;
   }, [open, setPostBuyLeadOpen]);
 
   // Hide panel after successful lead
@@ -121,10 +129,38 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     if (leadStatus === "saved") setPostBuyLeadOpen(false);
   }, [leadStatus, setPostBuyLeadOpen]);
 
+  useEffect(() => {
+    if (!postBuyLeadOpen) return;
+    if (leadPromptLoggedRef.current) return;
+
+    leadPromptLoggedRef.current = true;
+
+    let savedAlready = false;
+    try {
+      savedAlready = localStorage.getItem("seligo_lead_saved") === "1";
+    } catch {
+      // ignore storage failures
+    }
+
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "checkout",
+      source: leadSource,
+      meta: {
+        panel: "lead_prompt_shown",
+        lastBoughtName: lastBoughtName || null,
+        emailPrefilled: !!leadEmail?.trim(),
+        savedAlready,
+      },
+    }).catch(console.warn);
+  }, [postBuyLeadOpen, leadEmail, lastBoughtName, leadSource]);
+
 
   async function handleBuy(product: Product) {
     const url = getPurchaseUrl(product);
     if (!url) return;
+
+    setLastBoughtName(product.name ?? (product as any).title ?? "this item");
 
     // Open outbound immediately
     window.open(url, "_blank", "noopener,noreferrer");
@@ -133,7 +169,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     void Firestore.logEvent({
       type: "buy_click",
       view: "checkout",
-      source: "cart_buy",
+      source: "cart_confirm",
       productId: product.id,
       purchaseUrl: url,
       meta: {
@@ -141,6 +177,18 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         price: Number(product.price ?? 0),
       },
     }).catch(console.warn);
+
+    let saved = false;
+    try {
+      saved = localStorage.getItem("seligo_lead_saved") === "1";
+    } catch {
+      saved = false;
+    }
+    if (!saved && !postBuyPrompted) {
+      setPostBuyPrompted(true);
+      setLeadSource("post_buy_panel");
+      setPostBuyLeadOpen(true);
+    }
   }
 
   const handleLeadClick = async () => {
@@ -258,6 +306,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      setLastBoughtName(pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item");
+                      setLeadSource("cart_confirm");
                       setPostBuyLeadOpen(true);
                     }}
                     className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
@@ -290,8 +340,17 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   </div>
 
                   {leadEmail?.trim() ? (
-                    <div className="mt-3 text-xs text-slate-600">
-                      Sending alerts to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
+                    <div className="mt-3 text-xs text-slate-600 flex items-center justify-between gap-2">
+                      <div>
+                        Sending alerts to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLeadEmail("")}
+                        className="text-slate-700 font-extrabold underline"
+                      >
+                        Change
+                      </button>
                     </div>
                   ) : (
                     <input
