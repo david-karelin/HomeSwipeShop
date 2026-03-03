@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
 import { db, ensureUser, ensureUserReady } from "../../firestoreService";
+import { auth } from "../../firebase";
 import { fetchRecentEvents, fmtCreatedAt, type AdminEventRow } from "../lib/adminEvents";
 
 type EventType =
@@ -162,6 +164,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentErr, setRecentErr] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
+  const [authErr, setAuthErr] = useState<string | null>(null);
 
   const since = useMemo(() => {
     const now = new Date();
@@ -185,26 +188,26 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
-    let mounted = true;
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUid(u?.uid ?? null);
+    });
 
     ensureUser()
-      .then((u) => {
-        if (mounted) setUid(u.uid);
-      })
       .catch((e) => {
         console.warn("[admin] ensureUser failed", e);
-        if (mounted) setUid("ERROR");
+        setAuthErr(e?.message ?? "Auth failed");
       });
 
     return () => {
-      mounted = false;
+      unsub();
     };
   }, []);
 
   useEffect(() => {
+    if (!uid) return;
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [uid]);
 
   useEffect(() => {
     let mounted = true;
@@ -213,7 +216,6 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
       setRecentLoading(true);
       setRecentErr(null);
       try {
-        await ensureUserReady();
         const rows = await fetchRecentEvents(50);
         if (mounted) setRecent(rows);
       } catch (e: any) {
@@ -223,11 +225,11 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
       }
     }
 
-    void run();
+    if (uid) void run();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [uid]);
 
   const byType = stats?.byType ?? {};
   const pairSessions = stats?.pairSessions ?? ({} as Record<PairKey, number>);
@@ -277,6 +279,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="text-sm text-slate-500 mt-1">Last 7 days • session-based funnel</div>
           <div className="text-xs text-slate-500 mt-1">
             uid: <span className="font-mono">{uid ?? "…"}</span>
+            {authErr ? <span className="ml-2 text-rose-600">{authErr}</span> : null}
           </div>
         </div>
 
