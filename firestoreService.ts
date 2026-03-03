@@ -15,7 +15,15 @@ import {
   addDoc,
   writeBatch,
 } from "firebase/firestore";
-import { browserLocalPersistence, onAuthStateChanged, setPersistence, signInAnonymously, type User } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
+  onAuthStateChanged,
+  setPersistence,
+  signInAnonymously,
+  type User,
+} from "firebase/auth";
 import { auth, db } from "./firebase";
 import type { Product } from "./types";
 
@@ -32,7 +40,15 @@ export async function ensureUser(): Promise<User> {
       try {
         await setPersistence(auth, browserLocalPersistence);
       } catch {
-        // ignore persistence failures
+        try {
+          await setPersistence(auth, browserSessionPersistence);
+        } catch {
+          try {
+            await setPersistence(auth, inMemoryPersistence);
+          } catch {
+            // ignore persistence failures
+          }
+        }
       }
 
       const cred = await signInAnonymously(auth);
