@@ -102,7 +102,13 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const [pendingBuy, setPendingBuy] = useState<Product | null>(null);
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
   const [postBuyPrompted, setPostBuyPrompted] = useState(false);
+  const [leadPanelPulse, setLeadPanelPulse] = useState(false);
   const leadPromptLoggedRef = useRef(false);
+
+  function pulseLeadPanel() {
+    setLeadPanelPulse(true);
+    window.setTimeout(() => setLeadPanelPulse(false), 900);
+  }
 
   // Prefill email from localStorage
   useEffect(() => {
@@ -188,6 +194,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       setPostBuyPrompted(true);
       setLeadSource("post_buy_panel");
       setPostBuyLeadOpen(true);
+      requestAnimationFrame(() => {
+        document.querySelector('[data-lead-panel="1"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+        pulseLeadPanel();
+      });
     }
   }
 
@@ -309,6 +319,13 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       setLastBoughtName(pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item");
                       setLeadSource("cart_confirm");
                       setPostBuyLeadOpen(true);
+
+                      requestAnimationFrame(() => {
+                        document
+                          .querySelector('[data-lead-panel="1"]')
+                          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        pulseLeadPanel();
+                      });
                     }}
                     className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
                   >
@@ -324,14 +341,14 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
             {postBuyLeadOpen ? (
               leadStatus === "saved" ? (
-                <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                <div data-lead-panel="1" className={`mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}>
                   <div className="font-black text-emerald-700">Alerts enabled ✅</div>
                   <div className="text-sm text-emerald-700/80 mt-1">
                     We’ll email you if this item drops in price or a close alternative is cheaper.
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div data-lead-panel="1" className={`mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}>
                   <div className="font-black text-slate-900">
                     Get price-drop alerts for {lastBoughtName || "this item"}
                   </div>
@@ -368,7 +385,23 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     disabled={leadStatus === "saving"}
                     className="mt-3 w-full py-4 bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white rounded-2xl font-black disabled:opacity-60"
                   >
-                    {leadStatus === "saving" ? "Saving..." : leadEmail?.trim() ? "Enable alerts" : "Get alerts"}
+                    {leadStatus === "saving"
+                      ? "Saving..."
+                      : leadEmail?.trim()
+                        ? `Send links to ${leadEmail.trim()}`
+                        : "Get alerts"}
+                  </button>
+
+                  {leadEmail?.trim() ? (
+                    <div className="text-[11px] text-slate-500 mt-2">Receipt + price drops</div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => setPostBuyLeadOpen(false)}
+                    className="mt-2 text-xs text-slate-500 hover:text-slate-700 underline"
+                  >
+                    No thanks
                   </button>
 
                   <div className="text-[11px] text-slate-400 mt-3 leading-snug">
