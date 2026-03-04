@@ -314,20 +314,16 @@ async function fetchAllStatsSince(
   const retailerCtrRet = pct(confirmRetailerClickSessionSets.returning.size, shownRet);
   const dismissCtrRet = pct(confirmDismissSessionSets.returning.size, shownRet);
 
-  const primaryTotalNew =
-    confirmPrimaryEmailSessionSets.new.size +
-    confirmPrimaryRetailerSessionSets.new.size +
-    confirmPrimaryDismissSessionSets.new.size;
-  const primaryTotalRet =
-    confirmPrimaryEmailSessionSets.returning.size +
-    confirmPrimaryRetailerSessionSets.returning.size +
-    confirmPrimaryDismissSessionSets.returning.size;
-  const primaryEmailShareNew = pct(confirmPrimaryEmailSessionSets.new.size, primaryTotalNew);
-  const primaryRetailerShareNew = pct(confirmPrimaryRetailerSessionSets.new.size, primaryTotalNew);
-  const primaryDismissShareNew = pct(confirmPrimaryDismissSessionSets.new.size, primaryTotalNew);
-  const primaryEmailShareRet = pct(confirmPrimaryEmailSessionSets.returning.size, primaryTotalRet);
-  const primaryRetailerShareRet = pct(confirmPrimaryRetailerSessionSets.returning.size, primaryTotalRet);
-  const primaryDismissShareRet = pct(confirmPrimaryDismissSessionSets.returning.size, primaryTotalRet);
+  const shownCountNew = confirmShownCounts.new;
+  const shownCountRet = confirmShownCounts.returning;
+
+  const primaryEmailShareNew = pct(confirmPrimaryEmailCounts.new, shownCountNew);
+  const primaryRetailerShareNew = pct(confirmPrimaryRetailerCounts.new, shownCountNew);
+  const primaryDismissShareNew = pct(confirmPrimaryDismissCounts.new, shownCountNew);
+
+  const primaryEmailShareRet = pct(confirmPrimaryEmailCounts.returning, shownCountRet);
+  const primaryRetailerShareRet = pct(confirmPrimaryRetailerCounts.returning, shownCountRet);
+  const primaryDismissShareRet = pct(confirmPrimaryDismissCounts.returning, shownCountRet);
 
   const baseCheckout = sessionSets["checkout_open"]?.size ?? 0;
   const confirmShownRateNew = pct(shownNew, baseCheckout);
@@ -752,15 +748,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="font-black text-slate-900">{retailerCtrNew}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Primary choice share (new): Email</span>
+            <span className="text-slate-600">Primary choice share (per confirm, new): Email</span>
             <span className="font-black text-slate-900">{primaryEmailShareNew}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Primary choice share (new): Retailer</span>
+            <span className="text-slate-600">Primary choice share (per confirm, new): Retailer</span>
             <span className="font-black text-slate-900">{primaryRetailerShareNew}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Primary choice share (new): Dismiss</span>
+            <span className="text-slate-600">Primary choice share (per confirm, new): Dismiss</span>
             <span className="font-black text-slate-900">{primaryDismissShareNew}</span>
           </div>
           <div className="flex justify-between">
@@ -784,15 +780,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="font-black text-slate-900">{retailerCtrRet}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Primary choice share (returning): Email</span>
+            <span className="text-slate-600">Primary choice share (per confirm, returning): Email</span>
             <span className="font-black text-slate-900">{primaryEmailShareRet}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Primary choice share (returning): Retailer</span>
+            <span className="text-slate-600">Primary choice share (per confirm, returning): Retailer</span>
             <span className="font-black text-slate-900">{primaryRetailerShareRet}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Primary choice share (returning): Dismiss</span>
+            <span className="text-slate-600">Primary choice share (per confirm, returning): Dismiss</span>
             <span className="font-black text-slate-900">{primaryDismissShareRet}</span>
           </div>
           <div className="flex justify-between">

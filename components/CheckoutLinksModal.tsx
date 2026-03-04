@@ -23,6 +23,7 @@ type CheckoutLinksModalProps = {
   onSubmitLead: () => Promise<boolean>;
   postBuyLeadOpen: boolean;
   setPostBuyLeadOpen: (v: boolean) => void;
+  roomscanLeadRequestNonce?: number;
   leadSource: "cart_confirm" | "post_buy_panel" | "roomscan";
   setLeadSource: (v: "cart_confirm" | "post_buy_panel" | "roomscan") => void;
   onOpenProduct?: (p: Product) => void; // open your Product Details overlay
@@ -97,6 +98,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   onSubmitLead,
   postBuyLeadOpen,
   setPostBuyLeadOpen,
+  roomscanLeadRequestNonce = 0,
   leadSource,
   setLeadSource,
   onOpenProduct,
@@ -109,6 +111,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const leadInputRef = useRef<HTMLInputElement | null>(null);
   const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
+  const lastRoomscanLeadRequestRef = useRef(0);
   const primaryChoiceLoggedRef = useRef(false);
   const confirmInterceptedRef = useRef(false);
 
@@ -179,6 +182,15 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       // ignore storage failures
     }
   }, [open, postBuyLeadOpen, leadEmail]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!roomscanLeadRequestNonce) return;
+    if (roomscanLeadRequestNonce === lastRoomscanLeadRequestRef.current) return;
+
+    lastRoomscanLeadRequestRef.current = roomscanLeadRequestNonce;
+    openLeadPanel("roomscan", "these picks");
+  }, [open, roomscanLeadRequestNonce]);
 
   useEffect(() => {
     if (!open) return;
@@ -546,7 +558,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     Email me my cart links + price drops
                   </div>
                   <div className="text-sm text-slate-600 mt-1">
-                    Includes {lastBoughtName || "this item"} plus cheaper alternatives.
+                    Includes {leadSource === "roomscan" ? "these picks" : (lastBoughtName || "this item")} plus cheaper alternatives.
                   </div>
 
                   {leadEmail?.trim() ? (

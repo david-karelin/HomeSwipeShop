@@ -100,6 +100,24 @@ export default function RoomScanPage({
   const uploadRef = useRef<HTMLInputElement>(null);
   const hadAnyPicksRef = useRef(false);
   const pickImpressedRef = useRef<Set<string>>(new Set());
+  const emailCtaShownRef = useRef(false);
+
+  useEffect(() => {
+    if (pickStatus !== "ready" || picks.length === 0) {
+      emailCtaShownRef.current = false;
+      return;
+    }
+
+    if (emailCtaShownRef.current) return;
+    emailCtaShownRef.current = true;
+
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "roomscan",
+      source: "roomscan",
+      meta: { panel: "roomscan_email_cta_shown" },
+    }).catch(console.warn);
+  }, [pickStatus, picks.length]);
 
   useEffect(() => {
     if (pickStatus === "loading" || pickStatus === "idle") {

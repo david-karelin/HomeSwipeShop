@@ -296,6 +296,7 @@ export async function saveLead(payload: {
   wishlistCount: number;
   source?: string;
   view?: string;
+  meta?: Record<string, any>;
 }) {
   const writeOnce = async () => {
     const user = await ensureUserReady();
@@ -305,7 +306,7 @@ export async function saveLead(payload: {
     const bagCount = toSafeInt(payload.bagCount, 0);
     const wishlistCount = toSafeInt(payload.wishlistCount, 0);
 
-    await addDoc(collection(db, "leads"), {
+    const docPayload: Record<string, any> = {
       uid: user.uid,
       email,
       subtotal,
@@ -314,7 +315,13 @@ export async function saveLead(payload: {
       source: payload.source ?? "checkout_modal",
       view: payload.view ?? "cart",
       createdAt: serverTimestamp(),
-    });
+    };
+
+    if (payload.meta && typeof payload.meta === "object" && !Array.isArray(payload.meta)) {
+      docPayload.meta = payload.meta;
+    }
+
+    await addDoc(collection(db, "leads"), docPayload);
   };
 
   try {

@@ -369,6 +369,7 @@ const App: React.FC = () => {
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [undoCount, setUndoCount] = useState(0);
   const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
+  const [roomscanLeadRequestNonce, setRoomscanLeadRequestNonce] = useState(0);
   const [leadSource, setLeadSource] = useState<LeadSource>("post_buy_panel");
   const leadSourceRef = useRef<LeadSource>("post_buy_panel");
   const swipedRef = useRef<Set<string>>(new Set());
@@ -1346,18 +1347,18 @@ const App: React.FC = () => {
   };
 
   const openRoomScanLeadCapture = () => {
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "roomscan",
+      source: "roomscan",
+      meta: { panel: "roomscan_email_cta_click" },
+    }).catch(console.warn);
+
     setLeadSourceTracked("roomscan");
     setLeadError("");
     if (leadStatus === "error") setLeadStatus("idle");
-    setPostBuyLeadOpen(true);
+    setRoomscanLeadRequestNonce((n) => n + 1);
     setShowCheckout(true);
-
-    void Firestore.logEvent({
-      type: "view_change",
-      view: "checkout",
-      source: "roomscan",
-      meta: { panel: "lead_prompt_shown" },
-    }).catch(console.warn);
   };
 
   const setLeadSourceTracked = (value: LeadSource) => {
@@ -1379,6 +1380,38 @@ const App: React.FC = () => {
 
     const emailKnown = !!leadEmail?.trim();
     const src = leadSourceRef.current;
+    const leadView = src === "roomscan" ? "roomscan" : "checkout";
+    const roomscanPickIds = src === "roomscan"
+      ? roomScanPicks
+          .map((p) => p?.product?.id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+
+    if (src === "roomscan" && roomscanPickIds.length === 0) {
+      setLeadError("No picks yet — run a scan first.");
+      return false;
+    }
+
+    const roomscanLeadMeta = src === "roomscan"
+      ? {
+          pickIds: roomscanPickIds,
+          pickCount: roomscanPickIds.length,
+        }
+      : undefined;
+
+    const cartIds = userPrefs.cart
+      .map((p) => p?.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+    const cartLeadMeta = {
+      cartIds,
+      cartCount: cartIds.length,
+    };
+
+    const mergedMeta =
+      src === "roomscan"
+        ? { ...(roomscanLeadMeta ?? {}), ...cartLeadMeta }
+        : cartLeadMeta;
 
     setLeadStatus("saving");
     try {
@@ -1390,18 +1423,20 @@ const App: React.FC = () => {
         bagCount: userPrefs.cart.length,
         wishlistCount: userPrefs.wishlist.length,
         source: src,
-        view: "checkout",
+        view: leadView,
+        meta: mergedMeta,
       });
 
       void Firestore.logEvent({
         type: "lead_submit",
-        view: "checkout",
+        view: leadView,
         source: src,
         meta: {
           subtotal,
           bagCount: userPrefs.cart.length,
           wishlistCount: userPrefs.wishlist.length,
           emailKnown,
+          ...mergedMeta,
         },
       }).catch(console.warn);
       try {
@@ -2374,6 +2409,7 @@ const App: React.FC = () => {
         onSubmitLead={submitLead}
         postBuyLeadOpen={postBuyLeadOpen}
         setPostBuyLeadOpen={setPostBuyLeadOpen}
+        roomscanLeadRequestNonce={roomscanLeadRequestNonce}
         leadSource={leadSource}
         setLeadSource={setLeadSourceTracked}
       />

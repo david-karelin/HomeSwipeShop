@@ -51,8 +51,15 @@ function pickPurchaseUrl(p: Record<string, any>): string | null {
 }
 
 function buildRoomscanEmail(opts: {
-	products: Array<{ id: string; name: string; imageUrl: string; price: number; url?: string | null }>;
+  products: Array<{ id: string; name: string; imageUrl: string; price: number; url?: string | null }>;
+  heading?: string;
+  intro?: string;
 }) {
+  const heading = opts.heading ?? "Your Seligo room picks";
+  const intro =
+    opts.intro ??
+    "Here are your top picks — plus you’ll get alerts if prices drop or close alternatives are cheaper.";
+
   const itemsHtml = opts.products
     .map((p) => {
       const name = escapeHtml(p.name);
@@ -61,33 +68,33 @@ function buildRoomscanEmail(opts: {
       const url = p.url ? escapeHtml(p.url) : "";
 
       return `
-				<div style="display:flex; gap:12px; padding:12px; border:1px solid #eee; border-radius:14px; margin:10px 0;">
-					<img src="${img}" width="72" height="72" style="object-fit:cover; border-radius:12px; background:#f3f4f6;" />
-					<div style="flex:1; min-width:0;">
-						<div style="font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</div>
-						<div style="color:#475569; font-size:12px; margin-top:4px;">$${price}</div>
-						${url ? `<a href="${url}" style="display:inline-block; margin-top:8px; color:#f97316; font-weight:800; text-decoration:none;">Open ↗</a>` : ""}
-					</div>
-				</div>
-			`;
+        <div style="display:flex; gap:12px; padding:12px; border:1px solid #eee; border-radius:14px; margin:10px 0;">
+          <img src="${img}" width="72" height="72" style="object-fit:cover; border-radius:12px; background:#f3f4f6;" />
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</div>
+            <div style="color:#475569; font-size:12px; margin-top:4px;">$${price}</div>
+            ${url ? `<a href="${url}" style="display:inline-block; margin-top:8px; color:#f97316; font-weight:800; text-decoration:none;">Open ↗</a>` : ""}
+          </div>
+        </div>
+      `;
     })
     .join("");
 
   const html = `
-		<div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;">
-			<h2 style="margin:0 0 10px; color:#0f172a;">Your Seligo room picks</h2>
-			<div style="color:#475569; font-size:14px; margin-bottom:14px;">
-				Here are your top picks — plus you’ll get alerts if prices drop or close alternatives are cheaper.
-			</div>
-			${itemsHtml || "<div style=\"color:#475569;\">No picks found for this scan.</div>"}
-			<div style="color:#94a3b8; font-size:12px; margin-top:16px;">
-				You’re receiving this because you requested picks from Seligo.
-			</div>
-		</div>
-	`;
+    <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;">
+      <h2 style="margin:0 0 10px; color:#0f172a;">${escapeHtml(heading)}</h2>
+      <div style="color:#475569; font-size:14px; margin-bottom:14px;">
+        ${escapeHtml(intro)}
+      </div>
+      ${itemsHtml || "<div style=\"color:#475569;\">No items found.</div>"}
+      <div style="color:#94a3b8; font-size:12px; margin-top:16px;">
+        You’re receiving this because you requested links from Seligo.
+      </div>
+    </div>
+  `;
 
   const textLines = opts.products.map((p) => `- ${p.name} ($${p.price.toFixed(2)}) ${p.url ?? ""}`);
-  const text = `Your Seligo room picks\n\n${textLines.join("\n")}\n`;
+  const text = `${heading}\n\n${intro}\n\n${textLines.join("\n")}\n`;
 
   return {html, text};
 }
@@ -191,6 +198,10 @@ export const sendLeadEmail = onDocumentCreated(
         meta.pickIds.filter((x: any) => typeof x === "string" && x.length > 0).slice(0, 20) :
         [];
 
+      const cartIds = Array.isArray(meta.cartIds) ?
+        meta.cartIds.filter((x: any) => typeof x === "string" && x.length > 0).slice(0, 30) :
+        [];
+
       if (source === "roomscan" && pickIds.length) {
         const refs = pickIds.map((id: string) => db.doc(`products/${id}`));
         const snaps = await db.getAll(...refs);
@@ -210,6 +221,26 @@ export const sendLeadEmail = onDocumentCreated(
           .filter((p) => p.imageUrl);
 
         subject = "Your Seligo room picks";
+        ({html, text} = buildRoomscanEmail({products}));
+      } else if (cartIds.length) {
+        const refs = cartIds.map((id: string) => db.doc(`products/${id}`));
+        const snaps = await db.getAll(...refs);
+
+        const products = snaps
+          .filter((s) => s.exists)
+          .map((s) => {
+            const d = asMap(s.data());
+            return {
+              id: s.id,
+              name: String(d.name ?? d.title ?? "Untitled"),
+              imageUrl: String(d.imageUrl ?? d.imageURL ?? ""),
+              price: Number(d.price ?? 0),
+              url: pickPurchaseUrl(d),
+            };
+          })
+          .filter((p) => p.imageUrl);
+
+        subject = "Your Seligo cart links";
         ({html, text} = buildRoomscanEmail({products}));
       } else {
         ({html, text} = buildGenericLeadEmail());
