@@ -204,7 +204,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   const preferRetailer = hasSavedLeadEmail;
 
-  async function handleBuy(product: Product, sourceOverride?: string) {
+  async function handleBuy(
+    product: Product,
+    sourceOverride?: CheckoutLinksModalProps["leadSource"],
+    opts?: { skipPostBuyPrompt?: boolean }
+  ) {
     const url = getPurchaseUrl(product);
     if (!url) return;
     setLastBuyProduct(product);
@@ -224,6 +228,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         price: Number(product.price ?? 0),
       },
     }).catch(console.warn);
+
+    if (opts?.skipPostBuyPrompt) return;
 
     let saved = false;
     try {
@@ -414,8 +420,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     onClick={() => {
                       const p = pendingBuy ?? lastBuyProduct;
                       if (!p) return;
-                      const src = leadSourceRef.current ?? "unknown";
-                      void handleBuy(p, src);
+                      void handleBuy(p, leadSourceRef.current, { skipPostBuyPrompt: true });
                       setPendingBuy(null);
                       setPostBuyLeadOpen(false);
                     }}
