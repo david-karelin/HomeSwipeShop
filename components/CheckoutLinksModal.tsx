@@ -204,6 +204,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       saved = false;
     }
     if (!saved && !postBuyPrompted) {
+      console.log("[post_buy_panel] auto-open firing", {
+        saved,
+        postBuyPrompted,
+        product: product?.id,
+      });
       setPostBuyPrompted(true);
       openLeadPanel("post_buy_panel", product.name ?? (product as any).title ?? "this item");
     }
