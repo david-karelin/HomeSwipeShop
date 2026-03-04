@@ -338,6 +338,7 @@ const DisclosureScreen = ({ onBack }: { onBack: () => void }) => (
 );
 
 const App: React.FC = () => {
+  type LeadSource = "cart_confirm" | "post_buy_panel" | "roomscan";
   const adminEnabled =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("admin") === "1";
@@ -368,7 +369,8 @@ const App: React.FC = () => {
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [undoCount, setUndoCount] = useState(0);
   const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
-  const [leadSource, setLeadSource] = useState<"cart_confirm" | "post_buy_panel" | "checkout_modal">("post_buy_panel");
+  const [leadSource, setLeadSource] = useState<LeadSource>("post_buy_panel");
+  const leadSourceRef = useRef<LeadSource>("post_buy_panel");
   const swipedRef = useRef<Set<string>>(new Set());
   const impressedRef = useRef<Set<string>>(new Set());
   const undoRef = useRef<UndoEntry[]>([]);
@@ -1343,6 +1345,11 @@ const App: React.FC = () => {
     }
   };
 
+  const setLeadSourceTracked = (value: LeadSource) => {
+    leadSourceRef.current = value;
+    setLeadSource(value);
+  };
+
   const submitLead = async (): Promise<boolean> => {
     setLeadError("");
 
@@ -1356,6 +1363,7 @@ const App: React.FC = () => {
     if (leadStatus === "saving") return false;
 
     const emailKnown = !!leadEmail?.trim();
+    const src = leadSourceRef.current;
 
     setLeadStatus("saving");
     try {
@@ -1366,14 +1374,14 @@ const App: React.FC = () => {
         subtotal,
         bagCount: userPrefs.cart.length,
         wishlistCount: userPrefs.wishlist.length,
-        source: leadSource,
+        source: src,
         view: "checkout",
       });
 
       void Firestore.logEvent({
         type: "lead_submit",
         view: "checkout",
-        source: leadSource,
+        source: src,
         meta: {
           subtotal,
           bagCount: userPrefs.cart.length,
@@ -2350,7 +2358,7 @@ const App: React.FC = () => {
         postBuyLeadOpen={postBuyLeadOpen}
         setPostBuyLeadOpen={setPostBuyLeadOpen}
         leadSource={leadSource}
-        setLeadSource={setLeadSource}
+        setLeadSource={setLeadSourceTracked}
       />
 
       <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />

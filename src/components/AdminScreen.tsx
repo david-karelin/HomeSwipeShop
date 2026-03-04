@@ -37,6 +37,8 @@ type StatsState = {
   pairSessions: Record<PairKey, number>;
   leadBySource: Record<string, Stat>;
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
+  promptBySource: Record<string, Stat>;
+  leadPerPromptSessionsBySource: Record<string, number>;
 };
 
 function pairKey(num: string, den: string) {
@@ -96,7 +98,7 @@ const pairs = [
   ["pick_dismiss", "pick_impression"],
  ] as const;
 
-const leadSources = ["cart_confirm", "post_buy_panel"] as const;
+const leadSources = ["cart_confirm", "post_buy_panel", "roomscan"] as const;
 type LeadSource = (typeof leadSources)[number];
 const leadSourceSet = new Set<string>(leadSources);
 
@@ -109,6 +111,8 @@ async function fetchAllStatsSince(
   pairSessions: Record<PairKey, number>;
   leadBySource: Record<string, Stat>;
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
+  promptBySource: Record<string, Stat>;
+  leadPerPromptSessionsBySource: Record<string, number>;
 }> {
   const allowed = new Set(types);
 
@@ -121,9 +125,13 @@ async function fetchAllStatsSince(
 
   const leadCounts: Record<string, number> = {};
   const leadSessionSets: Record<string, Set<string>> = {};
+  const promptCounts: Record<string, number> = {};
+  const promptSessionSets: Record<string, Set<string>> = {};
   for (const s of leadSources) {
     leadCounts[s] = 0;
     leadSessionSets[s] = new Set<string>();
+    promptCounts[s] = 0;
+    promptSessionSets[s] = new Set<string>();
   }
 
   const qy = query(
@@ -152,6 +160,15 @@ async function fetchAllStatsSince(
         leadSessionSets[src].add(sid);
       }
     }
+
+    if (t === "view_change" && sid) {
+      const src = String(data?.source ?? "");
+      const panel = String(data?.meta?.panel ?? "");
+      if (panel === "lead_prompt_shown" && leadSourceSet.has(src)) {
+        promptCounts[src] += 1;
+        promptSessionSets[src].add(sid);
+      }
+    }
   });
 
   const valid = sessionSets["session_start"] ?? new Set<string>();
@@ -162,6 +179,7 @@ async function fetchAllStatsSince(
     }
     for (const s of leadSources) {
       leadSessionSets[s] = new Set([...leadSessionSets[s]].filter((sid) => valid.has(sid)));
+      promptSessionSets[s] = new Set([...promptSessionSets[s]].filter((sid) => valid.has(sid)));
     }
   }
 
@@ -191,7 +209,20 @@ async function fetchAllStatsSince(
     };
   }
 
-  return { byType, pairSessions, leadBySource, leadPairSessionsBySource };
+  const promptBySource: Record<string, Stat> = {};
+  for (const s of leadSources) {
+    promptBySource[s] = { count: promptCounts[s] ?? 0, sessions: promptSessionSets[s]?.size ?? 0 };
+  }
+
+  const leadPerPromptSessionsBySource: Record<string, number> = {};
+  for (const s of leadSources) {
+    leadPerPromptSessionsBySource[s] = intersectionSize(
+      leadSessionSets[s] ?? new Set(),
+      promptSessionSets[s] ?? new Set()
+    );
+  }
+
+  return { byType, pairSessions, leadBySource, leadPairSessionsBySource, promptBySource, leadPerPromptSessionsBySource };
 }
 
 export default function AdminScreen({ onBack }: { onBack: () => void }) {
@@ -274,6 +305,8 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const pairSessions = stats?.pairSessions ?? ({} as Record<PairKey, number>);
   const leadBySource = stats?.leadBySource ?? {};
   const leadPairsBySource = stats?.leadPairSessionsBySource ?? {};
+  const promptBySource = stats?.promptBySource ?? {};
+  const leadPerPromptSessionsBySource = stats?.leadPerPromptSessionsBySource ?? {};
 
   const sess = (t: string) => byType[t]?.sessions ?? 0;
   const ev = (t: string) => byType[t]?.count ?? 0;
@@ -294,6 +327,20 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const leadPerBuy_postBuyPanel = pct(leadPairsBySource["post_buy_panel"]?.perBuy ?? 0, sess("buy_click"));
   const leadRate_cartConfirm = pct(leadPairsBySource["cart_confirm"]?.perCheckout ?? 0, sess("checkout_open"));
   const leadRate_postBuyPanel = pct(leadPairsBySource["post_buy_panel"]?.perCheckout ?? 0, sess("checkout_open"));
+  const promptSess = (s: string) => promptBySource[s]?.sessions ?? 0;
+  const promptSess_roomscan = promptSess("roomscan");
+  const leadPerPrompt_cartConfirm = pct(leadPerPromptSessionsBySource["cart_confirm"] ?? 0, promptSess("cart_confirm"));
+  const leadPerPrompt_postBuyPanel = pct(leadPerPromptSessionsBySource["post_buy_panel"] ?? 0, promptSess("post_buy_panel"));
+  const leadPerPrompt_roomscan = pct(leadPerPromptSessionsBySource["roomscan"] ?? 0, promptSess("roomscan"));
+  const promptNum = (s: string) => leadPerPromptSessionsBySource[s] ?? 0;
+  const promptDen = (s: string) => promptSess(s) ?? 0;
+
+  const leadPerPromptText = (s: string) =>
+    `${pct(promptNum(s), promptDen(s))} (${promptNum(s)}/${promptDen(s)})`;
+
+  const leadPerPrompt_cartConfirm_txt = leadPerPromptText("cart_confirm");
+  const leadPerPrompt_postBuyPanel_txt = leadPerPromptText("post_buy_panel");
+  const leadPerPrompt_roomscan_txt = leadPerPromptText("roomscan");
 
   const scanSuccess  = pct(sessNum("scan_success", "session_start"), sess("session_start"));
   const pickSave     = pct(sessNum("pick_save", "pick_impression"), sess("pick_impression"));
@@ -413,6 +460,20 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="text-slate-600">Lead per buy (post_buy_panel / buy_click)</span>
             <span className="font-black text-slate-900">{leadPerBuy_postBuyPanel}</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per prompt (cart_confirm / prompt_shown)</span>
+            <span className="font-black text-slate-900">{leadPerPrompt_cartConfirm_txt}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Lead per prompt (post_buy_panel / prompt_shown)</span>
+            <span className="font-black text-slate-900">{leadPerPrompt_postBuyPanel_txt}</span>
+          </div>
+          {promptSess_roomscan > 0 ? (
+            <div className="flex justify-between">
+              <span className="text-slate-600">Lead per prompt (roomscan / prompt_shown)</span>
+              <span className="font-black text-slate-900">{leadPerPrompt_roomscan_txt}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 

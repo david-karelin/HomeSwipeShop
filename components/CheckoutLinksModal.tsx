@@ -22,8 +22,8 @@ type CheckoutLinksModalProps = {
   onSubmitLead: () => Promise<boolean>;
   postBuyLeadOpen: boolean;
   setPostBuyLeadOpen: (v: boolean) => void;
-  leadSource: "cart_confirm" | "post_buy_panel" | "checkout_modal";
-  setLeadSource: (v: "cart_confirm" | "post_buy_panel" | "checkout_modal") => void;
+  leadSource: "cart_confirm" | "post_buy_panel" | "roomscan";
+  setLeadSource: (v: "cart_confirm" | "post_buy_panel" | "roomscan") => void;
   onOpenProduct?: (p: Product) => void; // open your Product Details overlay
 };
 
@@ -103,12 +103,42 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
   const [postBuyPrompted, setPostBuyPrompted] = useState(false);
   const [leadPanelPulse, setLeadPanelPulse] = useState(false);
-  const leadPromptLoggedRef = useRef(false);
   const leadInputRef = useRef<HTMLInputElement | null>(null);
+  const leadPromptShownRef = useRef<Record<string, boolean>>({});
 
   function pulseLeadPanel() {
     setLeadPanelPulse(true);
     window.setTimeout(() => setLeadPanelPulse(false), 900);
+  }
+
+  function openLeadPanel(src: "cart_confirm" | "post_buy_panel" | "roomscan", name?: string) {
+    setLeadSource(src);
+    if (name) setLastBoughtName(name);
+    setPostBuyLeadOpen(true);
+
+    if (!leadPromptShownRef.current[src]) {
+      leadPromptShownRef.current[src] = true;
+      void Firestore.logEvent({
+        type: "view_change",
+        view: "checkout",
+        source: src,
+        meta: {
+          panel: "lead_prompt_shown",
+        },
+      }).catch(console.warn);
+    }
+
+    requestAnimationFrame(() => {
+      const panel = document.querySelector('[data-lead-panel="1"]') as HTMLElement | null;
+      const scroller = panel?.closest('[data-modal-scroll="true"]') as HTMLElement | null;
+      if (panel && scroller) {
+        const top = panel.offsetTop - scroller.clientHeight / 2 + panel.clientHeight / 2;
+        scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      } else {
+        panel?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      pulseLeadPanel();
+    });
   }
 
   useEffect(() => {
@@ -133,7 +163,6 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     setPendingBuy(null);
     setPostBuyLeadOpen(false);
     setPostBuyPrompted(false);
-    leadPromptLoggedRef.current = false;
   }, [open, setPostBuyLeadOpen]);
 
   // Hide panel after successful lead
@@ -148,38 +177,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     return () => window.clearTimeout(t);
   }, [postBuyLeadOpen, leadEmail]);
 
-  useEffect(() => {
-    if (!postBuyLeadOpen) return;
-    if (leadPromptLoggedRef.current) return;
-
-    leadPromptLoggedRef.current = true;
-
-    let savedAlready = false;
-    try {
-      savedAlready = localStorage.getItem("seligo_lead_saved") === "1";
-    } catch {
-      // ignore storage failures
-    }
-
-    void Firestore.logEvent({
-      type: "view_change",
-      view: "checkout",
-      source: leadSource,
-      meta: {
-        panel: "lead_prompt_shown",
-        lastBoughtName: lastBoughtName || null,
-        emailPrefilled: !!leadEmail?.trim(),
-        savedAlready,
-      },
-    }).catch(console.warn);
-  }, [postBuyLeadOpen, leadEmail, lastBoughtName, leadSource]);
-
-
   async function handleBuy(product: Product) {
     const url = getPurchaseUrl(product);
     if (!url) return;
-
-    setLastBoughtName(product.name ?? (product as any).title ?? "this item");
 
     // Open outbound immediately
     window.open(url, "_blank", "noopener,noreferrer");
@@ -205,12 +205,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     }
     if (!saved && !postBuyPrompted) {
       setPostBuyPrompted(true);
-      setLeadSource("post_buy_panel");
-      setPostBuyLeadOpen(true);
-      requestAnimationFrame(() => {
-        document.querySelector('[data-lead-panel="1"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
-        pulseLeadPanel();
-      });
+      openLeadPanel("post_buy_panel", product.name ?? (product as any).title ?? "this item");
     }
   }
 
@@ -329,16 +324,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setLastBoughtName(pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item");
-                      setLeadSource("cart_confirm");
-                      setPostBuyLeadOpen(true);
-
-                      requestAnimationFrame(() => {
-                        document
-                          .querySelector('[data-lead-panel="1"]')
-                          ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                        pulseLeadPanel();
-                      });
+                      openLeadPanel("cart_confirm", pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item");
                     }}
                     className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
                   >
@@ -363,10 +349,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
               ) : (
                 <div data-lead-panel="1" className={`mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}>
                   <div className="font-black text-slate-900">
-                    Get price-drop alerts for {lastBoughtName || "this item"}
+                    Email me my cart links + price drops
                   </div>
                   <div className="text-sm text-slate-600 mt-1">
-                    We’ll email you if it drops — or if a similar item is cheaper.
+                    Includes {lastBoughtName || "this item"} plus cheaper alternatives.
                   </div>
 
                   {leadEmail?.trim() ? (
