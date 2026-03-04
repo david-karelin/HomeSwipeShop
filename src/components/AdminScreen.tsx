@@ -64,6 +64,8 @@ const TYPES: EventType[] = [
   "pick_dismiss",
 ];
 
+const TYPES_FOR_STATS = Array.from(new Set([...TYPES, "view_change"])) as string[];
+
 function pct(num: number, den: number) {
   if (!den || den <= 0) return "—";
   const v = num / den;
@@ -163,7 +165,8 @@ async function fetchAllStatsSince(
 
     if (t === "view_change" && sid) {
       const src = String(data?.source ?? "");
-      const panel = String(data?.meta?.panel ?? "");
+      const meta = (data?.meta && typeof data.meta === "object" && !Array.isArray(data.meta)) ? data.meta : {};
+      const panel = String(meta?.panel ?? "");
       if (panel === "lead_prompt_shown" && leadSourceSet.has(src)) {
         promptCounts[src] += 1;
         promptSessionSets[src].add(sid);
@@ -171,10 +174,19 @@ async function fetchAllStatsSince(
     }
   });
 
-  const valid = sessionSets["session_start"] ?? new Set<string>();
+  console.log("[admin] view_change total:", counts["view_change"], "promptSessions:", {
+    cart_confirm: promptSessionSets["cart_confirm"]?.size ?? 0,
+    post_buy_panel: promptSessionSets["post_buy_panel"]?.size ?? 0,
+    roomscan: promptSessionSets["roomscan"]?.size ?? 0,
+  });
+
+  const valid =
+    (sessionSets["checkout_open"]?.size ? sessionSets["checkout_open"] : null) ??
+    (sessionSets["card_impression"]?.size ? sessionSets["card_impression"] : null) ??
+    (sessionSets["session_start"]?.size ? sessionSets["session_start"] : null) ??
+    new Set<string>();
   if (valid.size) {
     for (const t of Object.keys(sessionSets)) {
-      if (t === "session_start") continue;
       sessionSets[t] = new Set([...sessionSets[t]].filter((sid) => valid.has(sid)));
     }
     for (const s of leadSources) {
@@ -248,7 +260,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
 
     try {
       await ensureUserReady();
-      const res = await fetchAllStatsSince(since, TYPES, pairs);
+      const res = await fetchAllStatsSince(since, TYPES_FOR_STATS, pairs);
       setStats(res);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load metrics.");
