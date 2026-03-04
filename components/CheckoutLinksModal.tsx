@@ -109,6 +109,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const leadInputRef = useRef<HTMLInputElement | null>(null);
   const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
+  const lastConfirmLoggedRef = useRef<string | null>(null);
 
   useEffect(() => {
     leadSourceRef.current = leadSource;
@@ -203,6 +204,27 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   }, [postBuyLeadOpen, leadEmail]);
 
   const preferRetailer = hasSavedLeadEmail;
+
+  useEffect(() => {
+    if (!pendingBuy) {
+      lastConfirmLoggedRef.current = null;
+      return;
+    }
+
+    if (lastConfirmLoggedRef.current === pendingBuy.id) return;
+    lastConfirmLoggedRef.current = pendingBuy.id;
+
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "checkout",
+      source: "cart_confirm",
+      productId: pendingBuy.id,
+      meta: {
+        panel: "cart_confirm_card_shown",
+        preferRetailer: preferRetailer ? 1 : 0,
+      },
+    }).catch(console.warn);
+  }, [pendingBuy]);
 
   async function handleBuy(
     product: Product,
@@ -342,7 +364,19 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setPendingBuy(null)}
+                    onClick={() => {
+                      void Firestore.logEvent({
+                        type: "view_change",
+                        view: "checkout",
+                        source: "cart_confirm",
+                        productId: pendingBuy.id,
+                        meta: {
+                          panel: "cart_confirm_dismiss",
+                          preferRetailer: preferRetailer ? 1 : 0,
+                        },
+                      }).catch(console.warn);
+                      setPendingBuy(null);
+                    }}
                     className="h-9 w-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
                     aria-label="Dismiss"
                     title="Dismiss"
@@ -357,6 +391,16 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          void Firestore.logEvent({
+                            type: "view_change",
+                            view: "checkout",
+                            source: "cart_confirm",
+                            productId: pendingBuy.id,
+                            meta: {
+                              panel: "cart_confirm_email_click",
+                              preferRetailer: preferRetailer ? 1 : 0,
+                            },
+                          }).catch(console.warn);
                           openLeadPanel("cart_confirm");
                         }}
                         className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
@@ -367,6 +411,16 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          void Firestore.logEvent({
+                            type: "view_change",
+                            view: "checkout",
+                            source: "cart_confirm",
+                            productId: pendingBuy.id,
+                            meta: {
+                              panel: "cart_confirm_open_retailer_click",
+                              preferRetailer: preferRetailer ? 1 : 0,
+                            },
+                          }).catch(console.warn);
                           void handleBuy(pendingBuy, "cart_confirm");
                           setPendingBuy(null);
                         }}
@@ -380,6 +434,16 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          void Firestore.logEvent({
+                            type: "view_change",
+                            view: "checkout",
+                            source: "cart_confirm",
+                            productId: pendingBuy.id,
+                            meta: {
+                              panel: "cart_confirm_open_retailer_click",
+                              preferRetailer: preferRetailer ? 1 : 0,
+                            },
+                          }).catch(console.warn);
                           void handleBuy(pendingBuy, "cart_confirm");
                           setPendingBuy(null);
                         }}
@@ -391,6 +455,16 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          void Firestore.logEvent({
+                            type: "view_change",
+                            view: "checkout",
+                            source: "cart_confirm",
+                            productId: pendingBuy.id,
+                            meta: {
+                              panel: "cart_confirm_email_click",
+                              preferRetailer: preferRetailer ? 1 : 0,
+                            },
+                          }).catch(console.warn);
                           openLeadPanel("cart_confirm");
                         }}
                         className="h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold active:scale-95 transition"

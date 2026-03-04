@@ -39,6 +39,18 @@ type StatsState = {
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
   promptBySource: Record<string, Stat>;
   leadPerPromptSessionsBySource: Record<string, number>;
+  confirmByBucket: Record<ConfirmBucket, {
+    shown: Stat;
+    emailClick: Stat;
+    retailerClick: Stat;
+    dismiss: Stat;
+  }>;
+  confirmRatesByBucket: Record<ConfirmBucket, {
+    shownRate: string;
+    emailCtr: string;
+    retailerCtr: string;
+    dismissCtr: string;
+  }>;
 };
 
 function pairKey(num: string, den: string) {
@@ -65,6 +77,15 @@ const TYPES: EventType[] = [
 ];
 
 const TYPES_FOR_STATS = Array.from(new Set([...TYPES, "view_change"])) as string[];
+
+const REQUIRED_EVENT_TYPES: EventType[] = [
+  "view_change",
+  "checkout_open",
+  "card_impression",
+  "buy_click",
+  "lead_submit",
+  "session_start",
+];
 
 function pct(num: number, den: number) {
   if (!den || den <= 0) return "—";
@@ -104,6 +125,9 @@ const leadSources = ["cart_confirm", "post_buy_panel", "roomscan"] as const;
 type LeadSource = (typeof leadSources)[number];
 const leadSourceSet = new Set<string>(leadSources);
 
+const confirmBuckets = ["new", "returning"] as const;
+type ConfirmBucket = (typeof confirmBuckets)[number];
+
 async function fetchAllStatsSince(
   since: Timestamp,
   types: string[],
@@ -115,12 +139,25 @@ async function fetchAllStatsSince(
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
   promptBySource: Record<string, Stat>;
   leadPerPromptSessionsBySource: Record<string, number>;
+  confirmByBucket: Record<ConfirmBucket, {
+    shown: Stat;
+    emailClick: Stat;
+    retailerClick: Stat;
+    dismiss: Stat;
+  }>;
+  confirmRatesByBucket: Record<ConfirmBucket, {
+    shownRate: string;
+    emailCtr: string;
+    retailerCtr: string;
+    dismissCtr: string;
+  }>;
 }> {
-  const allowed = new Set(types);
+  const trackedTypes = Array.from(new Set([...types, ...REQUIRED_EVENT_TYPES]));
+  const allowed = new Set<string>(trackedTypes);
 
   const counts: Record<string, number> = {};
   const sessionSets: Record<string, Set<string>> = {};
-  for (const t of types) {
+  for (const t of trackedTypes) {
     counts[t] = 0;
     sessionSets[t] = new Set<string>();
   }
@@ -135,6 +172,18 @@ async function fetchAllStatsSince(
     promptCounts[s] = 0;
     promptSessionSets[s] = new Set<string>();
   }
+
+  const confirmShownCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmShownSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
+
+  const confirmEmailClickCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmEmailClickSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
+
+  const confirmRetailerClickCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmRetailerClickSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
+
+  const confirmDismissCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmDismissSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
 
   const qy = query(
     collection(db, "events"),
@@ -165,11 +214,32 @@ async function fetchAllStatsSince(
 
     if (t === "view_change" && sid) {
       const src = String(data?.source ?? "");
-      const meta = (data?.meta && typeof data.meta === "object" && !Array.isArray(data.meta)) ? data.meta : {};
+      const meta =
+        data?.meta && typeof data.meta === "object" && !Array.isArray(data.meta) ? data.meta : {};
       const panel = String(meta?.panel ?? "");
+
       if (panel === "lead_prompt_shown" && leadSourceSet.has(src)) {
         promptCounts[src] += 1;
         promptSessionSets[src].add(sid);
+      }
+
+      if (src === "cart_confirm") {
+        const preferRetailer = meta?.preferRetailer === 1 || meta?.preferRetailer === true;
+        const bucket: ConfirmBucket = preferRetailer ? "returning" : "new";
+
+        if (panel === "cart_confirm_card_shown") {
+          confirmShownCounts[bucket] += 1;
+          confirmShownSessionSets[bucket].add(sid);
+        } else if (panel === "cart_confirm_email_click") {
+          confirmEmailClickCounts[bucket] += 1;
+          confirmEmailClickSessionSets[bucket].add(sid);
+        } else if (panel === "cart_confirm_open_retailer_click") {
+          confirmRetailerClickCounts[bucket] += 1;
+          confirmRetailerClickSessionSets[bucket].add(sid);
+        } else if (panel === "cart_confirm_dismiss") {
+          confirmDismissCounts[bucket] += 1;
+          confirmDismissSessionSets[bucket].add(sid);
+        }
       }
     }
   });
@@ -193,10 +263,32 @@ async function fetchAllStatsSince(
       leadSessionSets[s] = new Set([...leadSessionSets[s]].filter((sid) => valid.has(sid)));
       promptSessionSets[s] = new Set([...promptSessionSets[s]].filter((sid) => valid.has(sid)));
     }
+    for (const b of confirmBuckets) {
+      confirmShownSessionSets[b] = new Set([...confirmShownSessionSets[b]].filter((sid) => valid.has(sid)));
+      confirmEmailClickSessionSets[b] = new Set([...confirmEmailClickSessionSets[b]].filter((sid) => valid.has(sid)));
+      confirmRetailerClickSessionSets[b] = new Set([...confirmRetailerClickSessionSets[b]].filter((sid) => valid.has(sid)));
+      confirmDismissSessionSets[b] = new Set([...confirmDismissSessionSets[b]].filter((sid) => valid.has(sid)));
+    }
   }
 
+  // counts (sessions)
+  const shownNew = confirmShownSessionSets.new.size;
+  const shownRet = confirmShownSessionSets.returning.size;
+
+  // CTRs (session-based)
+  const emailCtrNew = pct(confirmEmailClickSessionSets.new.size, shownNew);
+  const retailerCtrNew = pct(confirmRetailerClickSessionSets.new.size, shownNew);
+  const dismissCtrNew = pct(confirmDismissSessionSets.new.size, shownNew);
+
+  const emailCtrRet = pct(confirmEmailClickSessionSets.returning.size, shownRet);
+  const retailerCtrRet = pct(confirmRetailerClickSessionSets.returning.size, shownRet);
+  const dismissCtrRet = pct(confirmDismissSessionSets.returning.size, shownRet);
+
+  const confirmShownRateNew = pct(shownNew, valid.size);
+  const confirmShownRateRet = pct(shownRet, valid.size);
+
   const byType: Record<string, Stat> = {};
-  for (const t of types) {
+  for (const t of trackedTypes) {
     byType[t] = { count: counts[t] ?? 0, sessions: sessionSets[t]?.size ?? 0 };
   }
 
@@ -234,7 +326,56 @@ async function fetchAllStatsSince(
     );
   }
 
-  return { byType, pairSessions, leadBySource, leadPairSessionsBySource, promptBySource, leadPerPromptSessionsBySource };
+  const confirmByBucket: Record<ConfirmBucket, {
+    shown: Stat;
+    emailClick: Stat;
+    retailerClick: Stat;
+    dismiss: Stat;
+  }> = {
+    new: {
+      shown: { count: confirmShownCounts.new, sessions: shownNew },
+      emailClick: { count: confirmEmailClickCounts.new, sessions: confirmEmailClickSessionSets.new.size },
+      retailerClick: { count: confirmRetailerClickCounts.new, sessions: confirmRetailerClickSessionSets.new.size },
+      dismiss: { count: confirmDismissCounts.new, sessions: confirmDismissSessionSets.new.size },
+    },
+    returning: {
+      shown: { count: confirmShownCounts.returning, sessions: shownRet },
+      emailClick: { count: confirmEmailClickCounts.returning, sessions: confirmEmailClickSessionSets.returning.size },
+      retailerClick: { count: confirmRetailerClickCounts.returning, sessions: confirmRetailerClickSessionSets.returning.size },
+      dismiss: { count: confirmDismissCounts.returning, sessions: confirmDismissSessionSets.returning.size },
+    },
+  };
+
+  const confirmRatesByBucket: Record<ConfirmBucket, {
+    shownRate: string;
+    emailCtr: string;
+    retailerCtr: string;
+    dismissCtr: string;
+  }> = {
+    new: {
+      shownRate: confirmShownRateNew,
+      emailCtr: emailCtrNew,
+      retailerCtr: retailerCtrNew,
+      dismissCtr: dismissCtrNew,
+    },
+    returning: {
+      shownRate: confirmShownRateRet,
+      emailCtr: emailCtrRet,
+      retailerCtr: retailerCtrRet,
+      dismissCtr: dismissCtrRet,
+    },
+  };
+
+  return {
+    byType,
+    pairSessions,
+    leadBySource,
+    leadPairSessionsBySource,
+    promptBySource,
+    leadPerPromptSessionsBySource,
+    confirmByBucket,
+    confirmRatesByBucket,
+  };
 }
 
 export default function AdminScreen({ onBack }: { onBack: () => void }) {
@@ -319,6 +460,34 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const leadPairsBySource = stats?.leadPairSessionsBySource ?? {};
   const promptBySource = stats?.promptBySource ?? {};
   const leadPerPromptSessionsBySource = stats?.leadPerPromptSessionsBySource ?? {};
+  const confirmByBucket = stats?.confirmByBucket ?? {
+    new: {
+      shown: { count: 0, sessions: 0 },
+      emailClick: { count: 0, sessions: 0 },
+      retailerClick: { count: 0, sessions: 0 },
+      dismiss: { count: 0, sessions: 0 },
+    },
+    returning: {
+      shown: { count: 0, sessions: 0 },
+      emailClick: { count: 0, sessions: 0 },
+      retailerClick: { count: 0, sessions: 0 },
+      dismiss: { count: 0, sessions: 0 },
+    },
+  };
+  const confirmRatesByBucket = stats?.confirmRatesByBucket ?? {
+    new: {
+      shownRate: "—",
+      emailCtr: "—",
+      retailerCtr: "—",
+      dismissCtr: "—",
+    },
+    returning: {
+      shownRate: "—",
+      emailCtr: "—",
+      retailerCtr: "—",
+      dismissCtr: "—",
+    },
+  };
 
   const sess = (t: string) => byType[t]?.sessions ?? 0;
   const ev = (t: string) => byType[t]?.count ?? 0;
@@ -353,6 +522,17 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const leadPerPrompt_cartConfirm_txt = leadPerPromptText("cart_confirm");
   const leadPerPrompt_postBuyPanel_txt = leadPerPromptText("post_buy_panel");
   const leadPerPrompt_roomscan_txt = leadPerPromptText("roomscan");
+
+  const shownNew = confirmByBucket.new.shown.sessions;
+  const shownRet = confirmByBucket.returning.shown.sessions;
+  const confirmShownRateNew = confirmRatesByBucket.new.shownRate;
+  const confirmShownRateRet = confirmRatesByBucket.returning.shownRate;
+  const emailCtrNew = confirmRatesByBucket.new.emailCtr;
+  const retailerCtrNew = confirmRatesByBucket.new.retailerCtr;
+  const dismissCtrNew = confirmRatesByBucket.new.dismissCtr;
+  const emailCtrRet = confirmRatesByBucket.returning.emailCtr;
+  const retailerCtrRet = confirmRatesByBucket.returning.retailerCtr;
+  const dismissCtrRet = confirmRatesByBucket.returning.dismissCtr;
 
   const scanSuccess  = pct(sessNum("scan_success", "session_start"), sess("session_start"));
   const pickSave     = pct(sessNum("pick_save", "pick_impression"), sess("pick_impression"));
@@ -486,6 +666,48 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
               <span className="font-black text-slate-900">{leadPerPrompt_roomscan_txt}</span>
             </div>
           ) : null}
+
+          <div className="mt-3 pt-3 border-t border-slate-100" />
+          <div className="flex justify-between">
+            <span className="text-slate-600">Confirm shown (new)</span>
+            <span className="font-black text-slate-900">{shownNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Confirm shown rate (new)</span>
+            <span className="font-black text-slate-900">{confirmShownRateNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email CTR (new)</span>
+            <span className="font-black text-slate-900">{emailCtrNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Retailer CTR (new)</span>
+            <span className="font-black text-slate-900">{retailerCtrNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Dismiss rate (new)</span>
+            <span className="font-black text-slate-900">{dismissCtrNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Confirm shown (returning)</span>
+            <span className="font-black text-slate-900">{shownRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Confirm shown rate (returning)</span>
+            <span className="font-black text-slate-900">{confirmShownRateRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email CTR (returning)</span>
+            <span className="font-black text-slate-900">{emailCtrRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Retailer CTR (returning)</span>
+            <span className="font-black text-slate-900">{retailerCtrRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Dismiss rate (returning)</span>
+            <span className="font-black text-slate-900">{dismissCtrRet}</span>
+          </div>
         </div>
       </div>
 
