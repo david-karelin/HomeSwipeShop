@@ -110,6 +110,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
   const lastConfirmLoggedRef = useRef<string | null>(null);
+  const primaryChoiceLoggedRef = useRef(false);
 
   useEffect(() => {
     leadSourceRef.current = leadSource;
@@ -206,6 +207,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const preferRetailer = hasSavedLeadEmail;
 
   useEffect(() => {
+    primaryChoiceLoggedRef.current = false;
+  }, [pendingBuy?.id]);
+
+  useEffect(() => {
     if (!pendingBuy) {
       lastConfirmLoggedRef.current = null;
       return;
@@ -229,14 +234,33 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   async function handleBuy(
     product: Product,
     sourceOverride?: CheckoutLinksModalProps["leadSource"],
-    opts?: { skipPostBuyPrompt?: boolean }
+    opts?: { skipPostBuyPrompt?: boolean; bypassConfirmGate?: boolean }
   ) {
     const url = getPurchaseUrl(product);
     if (!url) return;
+
+    if (!opts?.bypassConfirmGate && !hasSavedLeadEmail) {
+      setPendingBuy(product);
+      setLastBuyProduct(product);
+      return;
+    }
+
     setLastBuyProduct(product);
 
     // Open outbound immediately
     window.open(url, "_blank", "noopener,noreferrer");
+
+    void Firestore.logEvent({
+      type: "checkout_item_open",
+      view: "checkout",
+      source: sourceOverride ?? "cart_confirm",
+      productId: product.id,
+      purchaseUrl: url,
+      meta: {
+        category: product.category ?? "",
+        price: Number(product.price ?? 0),
+      },
+    }).catch(console.warn);
 
     // Log buy_click with clear source
     void Firestore.logEvent({
@@ -276,6 +300,24 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   const handleLeadClick = async () => {
     await onSubmitLead();
+  };
+
+  const logPrimaryConfirmChoice = (choice: "email" | "retailer" | "dismiss") => {
+    if (!pendingBuy) return;
+    if (primaryChoiceLoggedRef.current) return;
+    primaryChoiceLoggedRef.current = true;
+
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "checkout",
+      source: "cart_confirm",
+      productId: pendingBuy.id,
+      meta: {
+        panel: "cart_confirm_primary_choice",
+        choice,
+        preferRetailer: preferRetailer ? 1 : 0,
+      },
+    }).catch(console.warn);
   };
 
   // lock body scroll + close on Escape
@@ -365,6 +407,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      logPrimaryConfirmChoice("dismiss");
                       void Firestore.logEvent({
                         type: "view_change",
                         view: "checkout",
@@ -391,6 +434,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          logPrimaryConfirmChoice("email");
                           void Firestore.logEvent({
                             type: "view_change",
                             view: "checkout",
@@ -411,6 +455,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          logPrimaryConfirmChoice("retailer");
                           void Firestore.logEvent({
                             type: "view_change",
                             view: "checkout",
@@ -421,7 +466,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                               preferRetailer: preferRetailer ? 1 : 0,
                             },
                           }).catch(console.warn);
-                          void handleBuy(pendingBuy, "cart_confirm");
+                          void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
                           setPendingBuy(null);
                         }}
                         className="h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold hover:bg-slate-50 active:scale-95 transition"
@@ -434,6 +479,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          logPrimaryConfirmChoice("retailer");
                           void Firestore.logEvent({
                             type: "view_change",
                             view: "checkout",
@@ -444,7 +490,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                               preferRetailer: preferRetailer ? 1 : 0,
                             },
                           }).catch(console.warn);
-                          void handleBuy(pendingBuy, "cart_confirm");
+                          void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
                           setPendingBuy(null);
                         }}
                         className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
@@ -455,6 +501,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          logPrimaryConfirmChoice("email");
                           void Firestore.logEvent({
                             type: "view_change",
                             view: "checkout",
@@ -494,7 +541,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     onClick={() => {
                       const p = pendingBuy ?? lastBuyProduct;
                       if (!p) return;
-                      void handleBuy(p, leadSourceRef.current, { skipPostBuyPrompt: true });
+                      void handleBuy(p, leadSourceRef.current, { skipPostBuyPrompt: true, bypassConfirmGate: true });
                       setPendingBuy(null);
                       setPostBuyLeadOpen(false);
                     }}

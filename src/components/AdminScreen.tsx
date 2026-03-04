@@ -50,6 +50,9 @@ type StatsState = {
     emailCtr: string;
     retailerCtr: string;
     dismissCtr: string;
+    primaryEmailShare: string;
+    primaryRetailerShare: string;
+    primaryDismissShare: string;
   }>;
 };
 
@@ -150,6 +153,9 @@ async function fetchAllStatsSince(
     emailCtr: string;
     retailerCtr: string;
     dismissCtr: string;
+    primaryEmailShare: string;
+    primaryRetailerShare: string;
+    primaryDismissShare: string;
   }>;
 }> {
   const trackedTypes = Array.from(new Set([...types, ...REQUIRED_EVENT_TYPES]));
@@ -184,6 +190,15 @@ async function fetchAllStatsSince(
 
   const confirmDismissCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
   const confirmDismissSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
+
+  const confirmPrimaryEmailCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmPrimaryEmailSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
+
+  const confirmPrimaryRetailerCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmPrimaryRetailerSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
+
+  const confirmPrimaryDismissCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
+  const confirmPrimaryDismissSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
 
   const qy = query(
     collection(db, "events"),
@@ -239,6 +254,18 @@ async function fetchAllStatsSince(
         } else if (panel === "cart_confirm_dismiss") {
           confirmDismissCounts[bucket] += 1;
           confirmDismissSessionSets[bucket].add(sid);
+        } else if (panel === "cart_confirm_primary_choice") {
+          const choice = String(meta?.choice ?? "");
+          if (choice === "email") {
+            confirmPrimaryEmailCounts[bucket] += 1;
+            confirmPrimaryEmailSessionSets[bucket].add(sid);
+          } else if (choice === "retailer") {
+            confirmPrimaryRetailerCounts[bucket] += 1;
+            confirmPrimaryRetailerSessionSets[bucket].add(sid);
+          } else if (choice === "dismiss") {
+            confirmPrimaryDismissCounts[bucket] += 1;
+            confirmPrimaryDismissSessionSets[bucket].add(sid);
+          }
         }
       }
     }
@@ -268,6 +295,9 @@ async function fetchAllStatsSince(
       confirmEmailClickSessionSets[b] = new Set([...confirmEmailClickSessionSets[b]].filter((sid) => valid.has(sid)));
       confirmRetailerClickSessionSets[b] = new Set([...confirmRetailerClickSessionSets[b]].filter((sid) => valid.has(sid)));
       confirmDismissSessionSets[b] = new Set([...confirmDismissSessionSets[b]].filter((sid) => valid.has(sid)));
+      confirmPrimaryEmailSessionSets[b] = new Set([...confirmPrimaryEmailSessionSets[b]].filter((sid) => valid.has(sid)));
+      confirmPrimaryRetailerSessionSets[b] = new Set([...confirmPrimaryRetailerSessionSets[b]].filter((sid) => valid.has(sid)));
+      confirmPrimaryDismissSessionSets[b] = new Set([...confirmPrimaryDismissSessionSets[b]].filter((sid) => valid.has(sid)));
     }
   }
 
@@ -284,8 +314,24 @@ async function fetchAllStatsSince(
   const retailerCtrRet = pct(confirmRetailerClickSessionSets.returning.size, shownRet);
   const dismissCtrRet = pct(confirmDismissSessionSets.returning.size, shownRet);
 
-  const confirmShownRateNew = pct(shownNew, valid.size);
-  const confirmShownRateRet = pct(shownRet, valid.size);
+  const primaryTotalNew =
+    confirmPrimaryEmailSessionSets.new.size +
+    confirmPrimaryRetailerSessionSets.new.size +
+    confirmPrimaryDismissSessionSets.new.size;
+  const primaryTotalRet =
+    confirmPrimaryEmailSessionSets.returning.size +
+    confirmPrimaryRetailerSessionSets.returning.size +
+    confirmPrimaryDismissSessionSets.returning.size;
+  const primaryEmailShareNew = pct(confirmPrimaryEmailSessionSets.new.size, primaryTotalNew);
+  const primaryRetailerShareNew = pct(confirmPrimaryRetailerSessionSets.new.size, primaryTotalNew);
+  const primaryDismissShareNew = pct(confirmPrimaryDismissSessionSets.new.size, primaryTotalNew);
+  const primaryEmailShareRet = pct(confirmPrimaryEmailSessionSets.returning.size, primaryTotalRet);
+  const primaryRetailerShareRet = pct(confirmPrimaryRetailerSessionSets.returning.size, primaryTotalRet);
+  const primaryDismissShareRet = pct(confirmPrimaryDismissSessionSets.returning.size, primaryTotalRet);
+
+  const baseCheckout = sessionSets["checkout_open"]?.size ?? 0;
+  const confirmShownRateNew = pct(shownNew, baseCheckout);
+  const confirmShownRateRet = pct(shownRet, baseCheckout);
 
   const byType: Record<string, Stat> = {};
   for (const t of trackedTypes) {
@@ -351,18 +397,27 @@ async function fetchAllStatsSince(
     emailCtr: string;
     retailerCtr: string;
     dismissCtr: string;
+    primaryEmailShare: string;
+    primaryRetailerShare: string;
+    primaryDismissShare: string;
   }> = {
     new: {
       shownRate: confirmShownRateNew,
       emailCtr: emailCtrNew,
       retailerCtr: retailerCtrNew,
       dismissCtr: dismissCtrNew,
+      primaryEmailShare: primaryEmailShareNew,
+      primaryRetailerShare: primaryRetailerShareNew,
+      primaryDismissShare: primaryDismissShareNew,
     },
     returning: {
       shownRate: confirmShownRateRet,
       emailCtr: emailCtrRet,
       retailerCtr: retailerCtrRet,
       dismissCtr: dismissCtrRet,
+      primaryEmailShare: primaryEmailShareRet,
+      primaryRetailerShare: primaryRetailerShareRet,
+      primaryDismissShare: primaryDismissShareRet,
     },
   };
 
@@ -480,12 +535,18 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
       emailCtr: "—",
       retailerCtr: "—",
       dismissCtr: "—",
+      primaryEmailShare: "—",
+      primaryRetailerShare: "—",
+      primaryDismissShare: "—",
     },
     returning: {
       shownRate: "—",
       emailCtr: "—",
       retailerCtr: "—",
       dismissCtr: "—",
+      primaryEmailShare: "—",
+      primaryRetailerShare: "—",
+      primaryDismissShare: "—",
     },
   };
 
@@ -530,9 +591,15 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const emailCtrNew = confirmRatesByBucket.new.emailCtr;
   const retailerCtrNew = confirmRatesByBucket.new.retailerCtr;
   const dismissCtrNew = confirmRatesByBucket.new.dismissCtr;
+  const primaryEmailShareNew = confirmRatesByBucket.new.primaryEmailShare;
+  const primaryRetailerShareNew = confirmRatesByBucket.new.primaryRetailerShare;
+  const primaryDismissShareNew = confirmRatesByBucket.new.primaryDismissShare;
   const emailCtrRet = confirmRatesByBucket.returning.emailCtr;
   const retailerCtrRet = confirmRatesByBucket.returning.retailerCtr;
   const dismissCtrRet = confirmRatesByBucket.returning.dismissCtr;
+  const primaryEmailShareRet = confirmRatesByBucket.returning.primaryEmailShare;
+  const primaryRetailerShareRet = confirmRatesByBucket.returning.primaryRetailerShare;
+  const primaryDismissShareRet = confirmRatesByBucket.returning.primaryDismissShare;
 
   const scanSuccess  = pct(sessNum("scan_success", "session_start"), sess("session_start"));
   const pickSave     = pct(sessNum("pick_save", "pick_impression"), sess("pick_impression"));
@@ -685,6 +752,18 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="font-black text-slate-900">{retailerCtrNew}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-slate-600">Primary choice share (new): Email</span>
+            <span className="font-black text-slate-900">{primaryEmailShareNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Primary choice share (new): Retailer</span>
+            <span className="font-black text-slate-900">{primaryRetailerShareNew}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Primary choice share (new): Dismiss</span>
+            <span className="font-black text-slate-900">{primaryDismissShareNew}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-600">Dismiss rate (new)</span>
             <span className="font-black text-slate-900">{dismissCtrNew}</span>
           </div>
@@ -703,6 +782,18 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Retailer CTR (returning)</span>
             <span className="font-black text-slate-900">{retailerCtrRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Primary choice share (returning): Email</span>
+            <span className="font-black text-slate-900">{primaryEmailShareRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Primary choice share (returning): Retailer</span>
+            <span className="font-black text-slate-900">{primaryRetailerShareRet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Primary choice share (returning): Dismiss</span>
+            <span className="font-black text-slate-900">{primaryDismissShareRet}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Dismiss rate (returning)</span>
