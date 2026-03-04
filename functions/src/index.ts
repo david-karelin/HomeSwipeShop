@@ -26,8 +26,9 @@ function asMap(v: any): Record<string, any> {
   return v && typeof v === "object" && !Array.isArray(v) ? v : {};
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => {
+function escapeHtml(s: unknown) {
+  const str = String(s ?? "");
+  return str.replace(/[&<>"']/g, (c) => {
     switch (c) {
     case "&":
       return "&amp;";
@@ -45,73 +46,155 @@ function escapeHtml(s: string) {
   });
 }
 
+function safeHttpUrl(u: unknown) {
+  const raw = String(u ?? "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) return "";
+  return escapeHtml(raw);
+}
+
 function pickPurchaseUrl(p: Record<string, any>): string | null {
-  const u = p.purchaseUrl ?? p.purchaseURL ?? p.url ?? p.link ?? null;
-  return typeof u === "string" && u.length >= 8 ? u : null;
+  const raw = p.purchaseUrl ?? p.purchaseURL ?? p.url ?? p.link ?? null;
+  if (typeof raw !== "string") return null;
+
+  const s = raw.trim();
+  if (!s) return null;
+
+  let candidate = s;
+  if (/^https?:\/\//i.test(s)) {
+    candidate = s;
+  } else if (/^www\./i.test(s)) {
+    candidate = `https://${s}`;
+  }
+
+  try {
+    const url = new URL(candidate);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname) return null;
+
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function buildRoomscanEmail(opts: {
   products: Array<{ id: string; name: string; imageUrl: string; price: number; url?: string | null }>;
   heading?: string;
   intro?: string;
+  sid?: string;
 }) {
-  const heading = opts.heading ?? "Your Seligo room picks";
-  const intro =
-    opts.intro ??
-    "Here are your top picks — plus you’ll get alerts if prices drop or close alternatives are cheaper.";
+  const heading = opts.heading ?? "Your Seligo picks";
+  const intro = opts.intro ?? "Here are your links:";
+  const prods = opts.products ?? [];
 
-  const itemsHtml = opts.products
+  const itemsHtml = prods
     .map((p) => {
-      const name = escapeHtml(p.name);
-      const img = escapeHtml(p.imageUrl);
-      const price = Number.isFinite(p.price) ? p.price.toFixed(2) : "0.00";
-      const url = p.url ? escapeHtml(p.url) : "";
+      const safeName = escapeHtml(String(p.name ?? "Untitled"));
+      const safeImage = safeHttpUrl(p.imageUrl);
+      const safeUrl = safeHttpUrl(p.url);
+      const openItemHtml = safeUrl ?
+        `<div style="margin-top:10px;">
+           <a href="${safeUrl}" style="display:inline-block; padding:10px 12px; border-radius:12px; background:#F97316; color:#fff; font-weight:900; text-decoration:none;">
+             Open item →
+           </a>
+         </div>` :
+        "";
 
       return `
-        <div style="display:flex; gap:12px; padding:12px; border:1px solid #eee; border-radius:14px; margin:10px 0;">
-          <img src="${img}" width="72" height="72" style="object-fit:cover; border-radius:12px; background:#f3f4f6;" />
-          <div style="flex:1; min-width:0;">
-            <div style="font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</div>
-            <div style="color:#475569; font-size:12px; margin-top:4px;">$${price}</div>
-            ${url ? `<a href="${url}" style="display:inline-block; margin-top:8px; color:#f97316; font-weight:800; text-decoration:none;">Open ↗</a>` : ""}
+        <div style="display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #e2e8f0;">
+          <img src="${safeImage}" alt="" width="72" height="72" style="border-radius:12px; object-fit:cover;" />
+          <div style="flex:1;">
+            <div style="font-weight:800; color:#0f172a; line-height:1.2;">${safeName}</div>
+            <div style="margin-top:6px; color:#0f172a; font-weight:800;">$${Number(p.price ?? 0).toFixed(2)}</div>
+            ${openItemHtml}
           </div>
         </div>
       `;
     })
     .join("");
 
+  const isCart = heading.toLowerCase().includes("cart");
+  const campaign = isCart ? "cart_links" : "roomscan_picks";
+  const sid = opts.sid ? encodeURIComponent(opts.sid) : "";
+  const appUrl =
+    "https://seligo.vercel.app/" +
+    `?utm_source=email&utm_medium=lead&utm_campaign=${encodeURIComponent(campaign)}` +
+    "&utm_content=cta" +
+    (sid ? `&sid=${sid}` : "");
+
+  const cta = `
+    <div style="margin-top:16px;">
+      <a href="${appUrl}" style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;">
+        See more picks →
+      </a>
+    </div>
+  `;
+
   const html = `
-    <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;">
-      <h2 style="margin:0 0 10px; color:#0f172a;">${escapeHtml(heading)}</h2>
-      <div style="color:#475569; font-size:14px; margin-bottom:14px;">
-        ${escapeHtml(intro)}
-      </div>
+  <div style="font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:20px; color:#0f172a;">
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent; mso-hide:all;">
+      Here are your saved links from Seligo.
+    </div>
+    <div style="font-size:18px; font-weight:900;">${escapeHtml(heading)}</div>
+    <div style="margin-top:6px; color:#475569;">${escapeHtml(intro)}</div>
+
+    <div style="margin-top:16px;">
       ${itemsHtml || "<div style=\"color:#475569;\">No items found.</div>"}
+      ${cta}
       <div style="color:#94a3b8; font-size:12px; margin-top:16px;">
         You’re receiving this because you requested links from Seligo.
       </div>
     </div>
+  </div>
   `;
 
-  const textLines = opts.products.map((p) => `- ${p.name} ($${p.price.toFixed(2)}) ${p.url ?? ""}`);
-  const text = `${heading}\n\n${intro}\n\n${textLines.join("\n")}\n`;
+  const textLines = prods.map((p) => `- ${p.name} ($${Number(p.price ?? 0).toFixed(2)}) ${p.url ?? ""}`);
+  const text = `${heading}\n\n${intro}\n\n${textLines.join("\n")}\n\nSee more picks: ${appUrl}\n`;
 
   return {html, text};
 }
 
-function buildGenericLeadEmail() {
+function buildGenericLeadEmail(opts?: { heading?: string; intro?: string; sid?: string }) {
+  const heading = opts?.heading ?? "Your Seligo links";
+  const intro =
+    opts?.intro ??
+    "Thanks — we’ve saved your request. Come back to Seligo anytime to see more picks.";
+
+  const campaign = "generic_links";
+  const appUrl =
+    "https://seligo.vercel.app/" +
+    `?utm_source=email&utm_medium=lead&utm_campaign=${encodeURIComponent(campaign)}` +
+    "&utm_content=cta" +
+    (opts?.sid ? `&sid=${encodeURIComponent(opts.sid)}` : "");
+
+  const cta = `
+    <div style="margin-top:16px;">
+      <a href="${appUrl}" style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;">
+        See more picks →
+      </a>
+    </div>
+  `;
+
   const html = `
-		<div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;">
-			<h2 style="margin:0 0 10px; color:#0f172a;">You’re all set ✅</h2>
-			<div style="color:#475569; font-size:14px;">
-				We’ll email you if items drop in price or a close alternative is cheaper.
-			</div>
-			<div style="color:#94a3b8; font-size:12px; margin-top:16px;">
-				You’re receiving this because you requested alerts from Seligo.
-			</div>
-		</div>
-	`;
-  const text = "You're all set. We'll email you if items drop in price or close alternatives are cheaper.\n";
+  <div style="font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:20px; color:#0f172a;">
+    <div style="font-size:18px; font-weight:900;">${escapeHtml(heading)}</div>
+    <div style="margin-top:6px; color:#475569;">${escapeHtml(intro)}</div>
+
+    ${cta}
+
+    <div style="color:#94a3b8; font-size:12px; margin-top:16px;">
+      You’re receiving this because you requested links from Seligo.
+    </div>
+  </div>
+  `;
+
+  const text =
+    `${heading}\n\n` +
+    `${intro}\n\n` +
+    `See more picks: ${appUrl}\n`;
+
   return {html, text};
 }
 
@@ -150,6 +233,7 @@ export const sendLeadEmail = onDocumentCreated(
     if (!snap) return;
 
     const leadId = event.params.leadId;
+    const sid = `server_${leadId}`;
     const ref = snap.ref;
     const lead = snap.data() as any;
 
@@ -187,10 +271,11 @@ export const sendLeadEmail = onDocumentCreated(
       return;
     }
 
+    let kind: "roomscan" | "cart" | "generic" = "generic";
+
     try {
       const resend = new Resend(RESEND_API_KEY.value());
 
-      let subject = "Your Seligo links";
       let html = "";
       let text = "";
 
@@ -202,48 +287,77 @@ export const sendLeadEmail = onDocumentCreated(
         meta.cartIds.filter((x: any) => typeof x === "string" && x.length > 0).slice(0, 30) :
         [];
 
-      if (source === "roomscan" && pickIds.length) {
-        const refs = pickIds.map((id: string) => db.doc(`products/${id}`));
+      const isRoomscan = Array.isArray(meta?.pickIds) && pickIds.length > 0;
+      const isCart = Array.isArray(meta?.cartIds) && cartIds.length > 0;
+
+      kind = isRoomscan ? "roomscan" : isCart ? "cart" : "generic";
+
+      const heading =
+        kind === "roomscan" ?
+          "Your Seligo room picks" :
+          kind === "cart" ?
+            "Your Seligo cart links" :
+            "Your Seligo links";
+
+      const intro =
+        kind === "roomscan" ?
+          "Here are your top picks — plus you’ll get alerts if prices drop or close alternatives are cheaper." :
+          kind === "cart" ?
+            "Here are your saved cart items — plus you’ll get alerts if prices drop or close alternatives are cheaper." :
+            "";
+
+      const subject = heading;
+
+      const ids =
+        kind === "roomscan" ? (pickIds ?? []) :
+          kind === "cart" ? (cartIds ?? []) :
+            [];
+
+      const fetchProductsByIds = async (ids: string[]) => {
+        if (!ids.length) return [];
+
+        const refs = ids.map((id) => db.doc(`products/${id}`));
         const snaps = await db.getAll(...refs);
 
-        const products = snaps
-          .filter((s) => s.exists)
-          .map((s) => {
-            const d = asMap(s.data());
-            return {
-              id: s.id,
-              name: String(d.name ?? d.title ?? "Untitled"),
-              imageUrl: String(d.imageUrl ?? d.imageURL ?? ""),
-              price: Number(d.price ?? 0),
-              url: pickPurchaseUrl(d),
-            };
-          })
-          .filter((p) => p.imageUrl);
+        const mapById = new Map<string, {
+          id: string;
+          name: string;
+          imageUrl: string;
+          price: number;
+          url?: string | null;
+        }>();
 
-        subject = "Your Seligo room picks";
-        ({html, text} = buildRoomscanEmail({products}));
-      } else if (cartIds.length) {
-        const refs = cartIds.map((id: string) => db.doc(`products/${id}`));
-        const snaps = await db.getAll(...refs);
+        for (const s of snaps) {
+          if (!s.exists) continue;
+          const d = asMap(s.data());
 
-        const products = snaps
-          .filter((s) => s.exists)
-          .map((s) => {
-            const d = asMap(s.data());
-            return {
-              id: s.id,
-              name: String(d.name ?? d.title ?? "Untitled"),
-              imageUrl: String(d.imageUrl ?? d.imageURL ?? ""),
-              price: Number(d.price ?? 0),
-              url: pickPurchaseUrl(d),
-            };
-          })
-          .filter((p) => p.imageUrl);
+          const p = {
+            id: s.id,
+            name: String(d.name ?? d.title ?? "Untitled"),
+            imageUrl: String(d.imageUrl ?? d.imageURL ?? ""),
+            price: Number(d.price ?? 0),
+            url: pickPurchaseUrl(d),
+          };
 
-        subject = "Your Seligo cart links";
-        ({html, text} = buildRoomscanEmail({products}));
+          if (p.imageUrl) mapById.set(s.id, p);
+        }
+
+        return ids
+          .map((id) => mapById.get(id))
+          .filter(Boolean) as Array<{ id: string; name: string; imageUrl: string; price: number; url?: string | null }>;
+      };
+
+      if (kind === "generic") {
+        ({html, text} = buildGenericLeadEmail({sid}));
       } else {
-        ({html, text} = buildGenericLeadEmail());
+        const products = await fetchProductsByIds(ids);
+
+        ({html, text} = buildRoomscanEmail({
+          products,
+          heading,
+          intro,
+          sid,
+        }));
       }
 
       const resp = await resend.emails.send({
@@ -254,11 +368,13 @@ export const sendLeadEmail = onDocumentCreated(
         text,
       });
 
+      const resendId = (resp as any)?.data?.id ?? (resp as any)?.id ?? null;
+
       await ref.update({
         emailStatus: "sent",
         emailSentAt: FieldValue.serverTimestamp(),
         emailProvider: "resend",
-        emailId: resp?.data?.id ?? null,
+        emailId: resendId,
       });
 
       await logEmailEvent({
@@ -267,10 +383,10 @@ export const sendLeadEmail = onDocumentCreated(
         view,
         leadId,
         panel: "email_sent",
-        meta: {emailId: resp?.data?.id ?? null},
+        meta: {sid, kind, emailId: resendId},
       });
 
-      logger.info("Email sent", {leadId, email, source, id: resp?.data?.id ?? null});
+      logger.info("Email sent", {leadId, email, source, id: resendId});
     } catch (err: any) {
       logger.error("Email send failed", {leadId, err});
 
@@ -286,7 +402,7 @@ export const sendLeadEmail = onDocumentCreated(
         view,
         leadId,
         panel: "email_failed",
-        meta: {error: String(err?.message ?? err)},
+        meta: {sid, kind, error: String(err?.message ?? err)},
       });
     }
   }

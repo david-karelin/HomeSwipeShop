@@ -39,6 +39,16 @@ type StatsState = {
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
   promptBySource: Record<string, Stat>;
   leadPerPromptSessionsBySource: Record<string, number>;
+  emailPanel: {
+    sent: Stat;
+    failed: Stat;
+    returned: Stat;
+    uniqueSentSids: number;
+    uniqueReturnSids: number;
+  };
+  utmReturnSessions: {
+    emailLeadCartLinks: number;
+  };
   confirmByBucket: Record<ConfirmBucket, {
     shown: Stat;
     emailClick: Stat;
@@ -142,6 +152,16 @@ async function fetchAllStatsSince(
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
   promptBySource: Record<string, Stat>;
   leadPerPromptSessionsBySource: Record<string, number>;
+  emailPanel: {
+    sent: Stat;
+    failed: Stat;
+    returned: Stat;
+    uniqueSentSids: number;
+    uniqueReturnSids: number;
+  };
+  utmReturnSessions: {
+    emailLeadCartLinks: number;
+  };
   confirmByBucket: Record<ConfirmBucket, {
     shown: Stat;
     emailClick: Stat;
@@ -200,6 +220,19 @@ async function fetchAllStatsSince(
   const confirmPrimaryDismissCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
   const confirmPrimaryDismissSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
 
+  const emailPanelCounts = { email_sent: 0, email_failed: 0, email_return: 0 };
+  const emailPanelSessionSets = {
+    email_sent: new Set<string>(),
+    email_failed: new Set<string>(),
+    email_return: new Set<string>(),
+  };
+  const emailPanelSidSets = {
+    email_sent: new Set<string>(),
+    email_return: new Set<string>(),
+  };
+
+  const emailLeadReturnSessionSet = new Set<string>();
+
   const qy = query(
     collection(db, "events"),
     where("createdAt", ">=", since),
@@ -219,6 +252,18 @@ async function fetchAllStatsSince(
     const sid = data?.sessionId != null ? String(data.sessionId) : "";
     if (sid) sessionSets[t].add(sid);
 
+    if (t === "session_start" && sid) {
+      const utmRaw =
+        data?.utm && typeof data.utm === "object" && !Array.isArray(data.utm) ? data.utm : {};
+      const utmSource = String(utmRaw?.utm_source ?? data?.utm_source ?? "").toLowerCase();
+      const utmMedium = String(utmRaw?.utm_medium ?? data?.utm_medium ?? "").toLowerCase();
+      const utmCampaign = String(utmRaw?.utm_campaign ?? data?.utm_campaign ?? "").toLowerCase();
+
+      if (utmSource === "email" && utmMedium === "lead" && utmCampaign === "cart_links") {
+        emailLeadReturnSessionSet.add(sid);
+      }
+    }
+
     if (t === "lead_submit" && sid) {
       const src = String(data?.source ?? "");
       if (leadSourceSet.has(src)) {
@@ -232,6 +277,20 @@ async function fetchAllStatsSince(
       const meta =
         data?.meta && typeof data.meta === "object" && !Array.isArray(data.meta) ? data.meta : {};
       const panel = String(meta?.panel ?? "");
+      const metaSid = meta?.sid != null ? String(meta.sid) : "";
+
+      if (panel === "email_sent") {
+        emailPanelCounts.email_sent += 1;
+        emailPanelSessionSets.email_sent.add(sid);
+        if (metaSid) emailPanelSidSets.email_sent.add(metaSid);
+      } else if (panel === "email_failed") {
+        emailPanelCounts.email_failed += 1;
+        emailPanelSessionSets.email_failed.add(sid);
+      } else if (panel === "email_return") {
+        emailPanelCounts.email_return += 1;
+        emailPanelSessionSets.email_return.add(sid);
+        if (metaSid) emailPanelSidSets.email_return.add(metaSid);
+      }
 
       if (panel === "lead_prompt_shown" && leadSourceSet.has(src)) {
         promptCounts[src] += 1;
@@ -424,6 +483,25 @@ async function fetchAllStatsSince(
     leadPairSessionsBySource,
     promptBySource,
     leadPerPromptSessionsBySource,
+    emailPanel: {
+      sent: {
+        count: emailPanelCounts.email_sent,
+        sessions: emailPanelSessionSets.email_sent.size,
+      },
+      failed: {
+        count: emailPanelCounts.email_failed,
+        sessions: emailPanelSessionSets.email_failed.size,
+      },
+      returned: {
+        count: emailPanelCounts.email_return,
+        sessions: emailPanelSessionSets.email_return.size,
+      },
+      uniqueSentSids: emailPanelSidSets.email_sent.size,
+      uniqueReturnSids: emailPanelSidSets.email_return.size,
+    },
+    utmReturnSessions: {
+      emailLeadCartLinks: emailLeadReturnSessionSet.size,
+    },
     confirmByBucket,
     confirmRatesByBucket,
   };
@@ -511,6 +589,16 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const leadPairsBySource = stats?.leadPairSessionsBySource ?? {};
   const promptBySource = stats?.promptBySource ?? {};
   const leadPerPromptSessionsBySource = stats?.leadPerPromptSessionsBySource ?? {};
+  const emailPanel = stats?.emailPanel ?? {
+    sent: { count: 0, sessions: 0 },
+    failed: { count: 0, sessions: 0 },
+    returned: { count: 0, sessions: 0 },
+    uniqueSentSids: 0,
+    uniqueReturnSids: 0,
+  };
+  const utmReturnSessions = stats?.utmReturnSessions ?? {
+    emailLeadCartLinks: 0,
+  };
   const confirmByBucket = stats?.confirmByBucket ?? {
     new: {
       shown: { count: 0, sessions: 0 },
@@ -560,6 +648,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const outboundRate = pct(sessNum("checkout_item_open", "checkout_open"), sess("checkout_open"));
   const buyRate      = pct(sessNum("buy_click", "checkout_open"), sess("checkout_open"));
   const leadRate     = pct(sessNum("lead_submit", "checkout_open"), sess("checkout_open"));
+  const emailSentRate = pct(emailPanel.sent.count, ev("lead_submit"));
+  const emailFailRate = pct(emailPanel.failed.count, ev("lead_submit"));
+  const emailReturnPerSentRate = pct(emailPanel.returned.count, emailPanel.sent.count);
+  const uniqueEmailReturnPerSentRate = pct(emailPanel.uniqueReturnSids, emailPanel.uniqueSentSids);
   const leadPerBuy   = pct(sessNum("lead_submit", "buy_click"), sess("buy_click"));
   const leadPerBuy_cartConfirm = pct(leadPairsBySource["cart_confirm"]?.perBuy ?? 0, sess("buy_click"));
   const leadPerBuy_postBuyPanel = pct(leadPairsBySource["post_buy_panel"]?.perBuy ?? 0, sess("buy_click"));
@@ -604,6 +696,8 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const applyRate    = pct(sessNum("scan_apply", "scan_success"), sess("scan_success"));
   const shareRate    = pct(sessNum("share_click", "scan_apply"), sess("scan_apply"));
   const leadFromScan = pct(sessNum("lead_submit", "scan_apply"), sess("scan_apply"));
+  const emailReturnSessions = utmReturnSessions.emailLeadCartLinks;
+  const emailReturnRate = pct(emailReturnSessions, sess("session_start"));
 
   useEffect(() => {
     if (sanityLoggedRef.current) return;
@@ -698,6 +792,22 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Lead rate (lead_submit / checkout_open)</span>
             <span className="font-black text-slate-900">{leadRate}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email sent rate (email_sent / lead_submit)</span>
+            <span className="font-black text-slate-900">{emailSentRate}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email failure rate (email_failed / lead_submit)</span>
+            <span className="font-black text-slate-900">{emailFailRate}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email return rate (email_return / email_sent)</span>
+            <span className="font-black text-slate-900">{emailReturnPerSentRate}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Unique return rate (distinct email_return.sid / email_sent.sid)</span>
+            <span className="font-black text-slate-900">{uniqueEmailReturnPerSentRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead rate (cart_confirm / checkout_open)</span>
@@ -832,6 +942,14 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Lead from scan (lead_submit / scan_apply)</span>
             <span className="font-black text-slate-900">{leadFromScan}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email return sessions (utm: email / lead / cart_links)</span>
+            <span className="font-black text-slate-900">{emailReturnSessions}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email return rate (utm sessions / session_start)</span>
+            <span className="font-black text-slate-900">{emailReturnRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead per buy (lead_submit / buy_click)</span>

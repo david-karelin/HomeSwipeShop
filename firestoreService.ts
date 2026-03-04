@@ -363,7 +363,19 @@ type UTM = Partial<{
   utm_campaign: string;
   utm_content: string;
   utm_term: string;
+  gclid: string;
+  fbclid: string;
 }>;
+
+const UTM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "gclid",
+  "fbclid",
+] as const;
 
 function getOrCreateSessionId() {
   const key = "seligo_session_id";
@@ -380,7 +392,7 @@ function getOrCreateSessionId() {
 function readUtmFromUrl(): UTM {
   const params = new URLSearchParams(window.location.search);
   const utm: UTM = {};
-  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const) {
+  for (const k of UTM_KEYS) {
     const v = params.get(k);
     if (v) (utm as any)[k] = v;
   }
@@ -402,7 +414,7 @@ function getPersistedUtm(): UTM {
 }
 
 function sanitizeUtm(obj: any) {
-  const allowed = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]);
+  const allowed = new Set<string>(UTM_KEYS);
   const out: any = {};
   for (const k of Object.keys(obj || {})) {
     if (allowed.has(k)) out[k] = obj[k];
@@ -417,14 +429,18 @@ export async function logEvent(payload: {
   source?: string;
   view?: string;
   meta?: Record<string, any>;
+  utm?: UTM;
 }) {
   persistUtmIfPresent();
 
   const user = await ensureUserReady();
   const sessionId = getOrCreateSessionId();
-  const utmRaw = getPersistedUtm();
-  const utm =
-    utmRaw && typeof utmRaw === "object" && !Array.isArray(utmRaw) ? utmRaw : {};
+  const persistedUtmRaw = getPersistedUtm();
+  const persistedUtm =
+    persistedUtmRaw && typeof persistedUtmRaw === "object" && !Array.isArray(persistedUtmRaw) ? persistedUtmRaw : {};
+  const payloadUtm =
+    payload.utm && typeof payload.utm === "object" && !Array.isArray(payload.utm) ? sanitizeUtm(payload.utm) : {};
+  const utm = {...persistedUtm, ...payloadUtm};
 
   const meta =
     payload.meta && typeof payload.meta === "object" && !Array.isArray(payload.meta)

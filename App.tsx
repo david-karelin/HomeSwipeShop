@@ -7,6 +7,7 @@ import CheckoutLinksModal from './components/CheckoutLinksModal';
 import AdminScreen from './src/components/AdminScreen';
 import HowItWorksModal from './src/components/HowItWorksModal';
 import RoomScanPage from './src/pages/RoomScanPage';
+import { getUtmFromLocation } from './src/lib/utm';
 import type { RoomScanAnalysis } from './src/services/localRoomScan';
 import seligoLogo from './src/assets/seligo-logo-primary-0EA5E9.png';
 import { 
@@ -385,7 +386,7 @@ const App: React.FC = () => {
   };
 
   const sanitizeUtm = (obj: any) => {
-    const allowed = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]);
+    const allowed = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid"]);
     const out: any = {};
     for (const k of Object.keys(obj || {})) {
       if (allowed.has(k)) out[k] = obj[k];
@@ -434,6 +435,34 @@ const App: React.FC = () => {
     } catch {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utm = getUtmFromLocation();
+    const sid = params.get("sid");
+
+    if (!utm && !sid) return;
+
+    const key = `seligo_email_return_logged_${sid ?? "nosid"}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+
+    try {
+      localStorage.setItem("seligo_last_utm", JSON.stringify({ utm: utm ?? null, sid: sid ?? null }));
+    } catch {
+      // ignore storage failures
+    }
+
+    void Firestore.ensureUserReady()
+      .then(() => Firestore.logEvent({
+        type: "view_change",
+        view: "landing",
+        source: "email",
+        meta: { panel: "email_return", sid: sid ?? undefined },
+        utm: utm ?? undefined,
+      }))
+      .catch(console.warn);
   }, []);
 
   useEffect(() => {
