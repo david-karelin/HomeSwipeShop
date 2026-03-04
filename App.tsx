@@ -1345,6 +1345,21 @@ const App: React.FC = () => {
     }
   };
 
+  const openRoomScanLeadCapture = () => {
+    setLeadSourceTracked("roomscan");
+    setLeadError("");
+    if (leadStatus === "error") setLeadStatus("idle");
+    setPostBuyLeadOpen(true);
+    setShowCheckout(true);
+
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "checkout",
+      source: "roomscan",
+      meta: { panel: "lead_prompt_shown" },
+    }).catch(console.warn);
+  };
+
   const setLeadSourceTracked = (value: LeadSource) => {
     leadSourceRef.current = value;
     setLeadSource(value);
@@ -2178,6 +2193,7 @@ const App: React.FC = () => {
               pickStatus={roomScanPickStatus}
               onSavePick={addToWishlistFromRoomScan}
               onBagPick={addToCartFromRoomScan}
+              onEmailPicks={openRoomScanLeadCapture}
               onGoExplore={() => setView("browsing")}
               onDismissPick={dismissRoomScanPick}
               onScanAgain={() => {

@@ -102,11 +102,17 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   onOpenProduct,
 }) => {
   const [pendingBuy, setPendingBuy] = useState<Product | null>(null);
+  const [lastBuyProduct, setLastBuyProduct] = useState<Product | null>(null);
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
   const [postBuyPrompted, setPostBuyPrompted] = useState(false);
   const [leadPanelPulse, setLeadPanelPulse] = useState(false);
   const leadInputRef = useRef<HTMLInputElement | null>(null);
+  const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    leadSourceRef.current = leadSource;
+  }, [leadSource]);
 
   function pulseLeadPanel() {
     setLeadPanelPulse(true);
@@ -114,6 +120,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   }
 
   function openLeadPanel(src: "cart_confirm" | "post_buy_panel" | "roomscan", name?: string) {
+    leadSourceRef.current = src;
     setLeadSource(src);
     if (name) setLastBoughtName(name);
     setPostBuyLeadOpen(true);
@@ -132,12 +139,28 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
     requestAnimationFrame(() => {
       const panel = document.querySelector('[data-lead-panel="1"]') as HTMLElement | null;
-      const scroller = panel?.closest('[data-modal-scroll="true"]') as HTMLElement | null;
-      if (panel && scroller) {
+
+      if (!panel) {
+        requestAnimationFrame(() => {
+          const panel2 = document.querySelector('[data-lead-panel="1"]') as HTMLElement | null;
+          const scroller2 = panel2?.closest('[data-modal-scroll="true"]') as HTMLElement | null;
+          if (panel2 && scroller2) {
+            const top = panel2.offsetTop - scroller2.clientHeight / 2 + panel2.clientHeight / 2;
+            scroller2.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+          } else {
+            panel2?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+          pulseLeadPanel();
+        });
+        return;
+      }
+
+      const scroller = panel.closest('[data-modal-scroll="true"]') as HTMLElement | null;
+      if (scroller) {
         const top = panel.offsetTop - scroller.clientHeight / 2 + panel.clientHeight / 2;
         scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
       } else {
-        panel?.scrollIntoView({ behavior: "smooth", block: "center" });
+        panel.scrollIntoView({ behavior: "smooth", block: "center" });
       }
       pulseLeadPanel();
     });
@@ -167,9 +190,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     setPostBuyPrompted(false);
   }, [open, setPostBuyLeadOpen]);
 
-  // Hide panel after successful lead
+  // Keep panel visible after successful lead so user can continue to retailer
   useEffect(() => {
-    if (leadStatus === "saved") setPostBuyLeadOpen(false);
+    if (leadStatus !== "saved") return;
   }, [leadStatus, setPostBuyLeadOpen]);
 
   useEffect(() => {
@@ -181,9 +204,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   const preferRetailer = hasSavedLeadEmail;
 
-  async function handleBuy(product: Product) {
+  async function handleBuy(product: Product, sourceOverride?: string) {
     const url = getPurchaseUrl(product);
     if (!url) return;
+    setLastBuyProduct(product);
 
     // Open outbound immediately
     window.open(url, "_blank", "noopener,noreferrer");
@@ -192,7 +216,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     void Firestore.logEvent({
       type: "buy_click",
       view: "checkout",
-      source: "cart_confirm",
+      source: sourceOverride ?? "cart_confirm",
       productId: product.id,
       purchaseUrl: url,
       meta: {
@@ -321,65 +345,49 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   </button>
                 </div>
 
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   {!preferRetailer ? (
                     <>
-                      {/* ✅ Primary: Email (new users) */}
                       <button
                         type="button"
                         onClick={() => {
-                          if (!pendingBuy) return;
-                          openLeadPanel(
-                            "cart_confirm",
-                            pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item"
-                          );
+                          openLeadPanel("cart_confirm");
                         }}
-                        className="flex-1 h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
+                        className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
                       >
                         Email me links
                       </button>
 
-                      {/* Secondary: Retailer */}
                       <button
                         type="button"
                         onClick={() => {
-                          if (!pendingBuy) return;
-                          void handleBuy(pendingBuy!);
+                          void handleBuy(pendingBuy, "cart_confirm");
                           setPendingBuy(null);
                         }}
-                        className="flex-1 h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
+                        className="h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold hover:bg-slate-50 active:scale-95 transition"
                       >
-                        <span>Open retailer</span>
-                        <span className="opacity-70">↗</span>
+                        Open retailer ↗
                       </button>
                     </>
                   ) : (
                     <>
-                      {/* ✅ Primary: Retailer (returning users already captured) */}
                       <button
                         type="button"
                         onClick={() => {
-                          if (!pendingBuy) return;
-                          void handleBuy(pendingBuy!);
+                          void handleBuy(pendingBuy, "cart_confirm");
                           setPendingBuy(null);
                         }}
-                        className="flex-1 h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
+                        className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
                       >
-                        <span>Open retailer</span>
-                        <span className="opacity-90">↗</span>
+                        Open retailer ↗
                       </button>
 
-                      {/* Secondary: Email */}
                       <button
                         type="button"
                         onClick={() => {
-                          if (!pendingBuy) return;
-                          openLeadPanel(
-                            "cart_confirm",
-                            pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item"
-                          );
+                          openLeadPanel("cart_confirm");
                         }}
-                        className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
+                        className="h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold active:scale-95 transition"
                       >
                         Email me links
                       </button>
@@ -400,6 +408,21 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <div className="text-sm text-emerald-700/80 mt-1">
                     We’ll email you if this item drops in price or a close alternative is cheaper.
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = pendingBuy ?? lastBuyProduct;
+                      if (!p) return;
+                      const src = leadSourceRef.current ?? "unknown";
+                      void handleBuy(p, src);
+                      setPendingBuy(null);
+                      setPostBuyLeadOpen(false);
+                    }}
+                    className="mt-3 w-full h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
+                  >
+                    Continue to retailer ↗
+                  </button>
                 </div>
               ) : (
                 <div data-lead-panel="1" className={`mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}>
@@ -483,7 +506,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         </div>
                       </div>
                       <button
-                        onClick={() => setPendingBuy(p)}
+                        onClick={() => {
+                          setPostBuyLeadOpen(false);
+                          setPendingBuy(p);
+                          setLastBuyProduct(p);
+                        }}
                         className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition flex items-center gap-1"
                       >
                         <span>Buy</span>

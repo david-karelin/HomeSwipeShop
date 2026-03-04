@@ -24,6 +24,7 @@ type Props = {
   pickStatus: "idle" | "loading" | "ready" | "error";
   onSavePick: (p: Product) => void | Promise<void>;
   onBagPick: (p: Product) => void | Promise<void>;
+  onEmailPicks: () => void | Promise<void>;
   onDismissPick: (productId: string) => void;
   onGoExplore: () => void;
   onScanAgain?: () => void;
@@ -48,6 +49,7 @@ export default function RoomScanPage({
   pickStatus,
   onSavePick,
   onBagPick,
+  onEmailPicks,
   onDismissPick,
   onGoExplore,
   onScanAgain,
@@ -683,6 +685,16 @@ export default function RoomScanPage({
                       </div>
 
                       <div className="text-xs text-black/60">Based on your scan + your vibe.</div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void onEmailPicks();
+                        }}
+                        className="w-full h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
+                      >
+                        Email me these picks
+                      </button>
 
                       <div className="space-y-3">
                         {picks.map(({ product, rationale }) => (
