@@ -2352,6 +2352,7 @@ const App: React.FC = () => {
         subtotal={userPrefs.cart.reduce((s, i) => s + (i.price || 0), 0)}
         leadEmail={leadEmail}
         setLeadEmail={handleLeadEmailChange}
+        hasSavedLeadEmail={!!leadEmail.trim()}
         leadStatus={leadStatus}
         leadError={leadError}
         onSubmitLead={submitLead}

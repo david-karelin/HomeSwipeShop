@@ -17,6 +17,7 @@ type CheckoutLinksModalProps = {
   subtotal: number;
   leadEmail: string;
   setLeadEmail: (v: string) => void;
+  hasSavedLeadEmail: boolean;
   leadStatus: "idle" | "saving" | "saved" | "error";
   leadError: string;
   onSubmitLead: () => Promise<boolean>;
@@ -90,6 +91,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   subtotal,
   leadEmail,
   setLeadEmail,
+  hasSavedLeadEmail,
   leadStatus,
   leadError,
   onSubmitLead,
@@ -177,6 +179,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     return () => window.clearTimeout(t);
   }, [postBuyLeadOpen, leadEmail]);
 
+  const preferRetailer = hasSavedLeadEmail;
+
   async function handleBuy(product: Product) {
     const url = getPurchaseUrl(product);
     if (!url) return;
@@ -200,17 +204,21 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     let saved = false;
     try {
       saved = localStorage.getItem("seligo_lead_saved") === "1";
-    } catch {
-      saved = false;
-    }
-    if (!saved && !postBuyPrompted) {
-      console.log("[post_buy_panel] auto-open firing", {
-        saved,
-        postBuyPrompted,
-        product: product?.id,
-      });
+    } catch {}
+
+    if (!postBuyPrompted) {
       setPostBuyPrompted(true);
-      openLeadPanel("post_buy_panel", product.name ?? (product as any).title ?? "this item");
+
+      if (!saved) {
+        openLeadPanel("post_buy_panel", product.name ?? (product as any).title ?? "this item");
+      } else {
+        void Firestore.logEvent({
+          type: "view_change",
+          view: "checkout",
+          source: "post_buy_panel",
+          meta: { panel: "lead_prompt_eligible_saved" },
+        }).catch(console.warn);
+      }
     }
   }
 
@@ -314,27 +322,69 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 </div>
 
                 <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleBuy(pendingBuy);
-                      setPendingBuy(null);
-                    }}
-                    className="flex-1 h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
-                  >
-                    <span>Open retailer</span>
-                    <span className="opacity-90">↗</span>
-                  </button>
+                  {!preferRetailer ? (
+                    <>
+                      {/* ✅ Primary: Email (new users) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!pendingBuy) return;
+                          openLeadPanel(
+                            "cart_confirm",
+                            pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item"
+                          );
+                        }}
+                        className="flex-1 h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
+                      >
+                        Email me links
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openLeadPanel("cart_confirm", pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item");
-                    }}
-                    className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
-                  >
-                    Email me links
-                  </button>
+                      {/* Secondary: Retailer */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!pendingBuy) return;
+                          void handleBuy(pendingBuy!);
+                          setPendingBuy(null);
+                        }}
+                        className="flex-1 h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
+                      >
+                        <span>Open retailer</span>
+                        <span className="opacity-70">↗</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* ✅ Primary: Retailer (returning users already captured) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!pendingBuy) return;
+                          void handleBuy(pendingBuy!);
+                          setPendingBuy(null);
+                        }}
+                        className="flex-1 h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
+                      >
+                        <span>Open retailer</span>
+                        <span className="opacity-90">↗</span>
+                      </button>
+
+                      {/* Secondary: Email */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!pendingBuy) return;
+                          openLeadPanel(
+                            "cart_confirm",
+                            pendingBuy?.name ?? (pendingBuy as any)?.title ?? "this item"
+                          );
+                        }}
+                        className="flex-1 h-12 rounded-2xl bg-slate-900 text-white font-extrabold active:scale-95 transition"
+                      >
+                        Email me links
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-3 text-[11px] text-slate-400 leading-snug">
