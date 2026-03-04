@@ -109,8 +109,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const leadInputRef = useRef<HTMLInputElement | null>(null);
   const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
-  const lastConfirmLoggedRef = useRef<string | null>(null);
   const primaryChoiceLoggedRef = useRef(false);
+  const confirmInterceptedRef = useRef(false);
 
   useEffect(() => {
     leadSourceRef.current = leadSource;
@@ -186,8 +186,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   }, [open]);
 
   useEffect(() => {
+    if (open) confirmInterceptedRef.current = false;
+  }, [open]);
+
+  useEffect(() => {
     if (open) return;
-    setPendingBuy(null);
     setPostBuyLeadOpen(false);
     setPostBuyPrompted(false);
   }, [open, setPostBuyLeadOpen]);
@@ -206,30 +209,27 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   const preferRetailer = hasSavedLeadEmail;
 
-  useEffect(() => {
-    primaryChoiceLoggedRef.current = false;
-  }, [pendingBuy?.id]);
+  function openConfirm(p: Product) {
+    const prefer = hasSavedLeadEmail;
 
-  useEffect(() => {
-    if (!pendingBuy) {
-      lastConfirmLoggedRef.current = null;
-      return;
-    }
-
-    if (lastConfirmLoggedRef.current === pendingBuy.id) return;
-    lastConfirmLoggedRef.current = pendingBuy.id;
+    setPendingBuy(p);
+    setLastBuyProduct(p);
 
     void Firestore.logEvent({
       type: "view_change",
       view: "checkout",
       source: "cart_confirm",
-      productId: pendingBuy.id,
+      productId: p.id,
       meta: {
         panel: "cart_confirm_card_shown",
-        preferRetailer: preferRetailer ? 1 : 0,
+        preferRetailer: prefer ? 1 : 0,
       },
     }).catch(console.warn);
-  }, [pendingBuy]);
+  }
+
+  useEffect(() => {
+    primaryChoiceLoggedRef.current = false;
+  }, [pendingBuy?.id]);
 
   async function handleBuy(
     product: Product,
@@ -239,9 +239,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     const url = getPurchaseUrl(product);
     if (!url) return;
 
-    if (!opts?.bypassConfirmGate && !hasSavedLeadEmail) {
-      setPendingBuy(product);
-      setLastBuyProduct(product);
+    if (!opts?.bypassConfirmGate && !hasSavedLeadEmail && !confirmInterceptedRef.current) {
+      confirmInterceptedRef.current = true;
+      openConfirm(product);
       return;
     }
 
@@ -318,6 +318,24 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         preferRetailer: preferRetailer ? 1 : 0,
       },
     }).catch(console.warn);
+  };
+
+  const onConfirmRetailer = () => {
+    if (!pendingBuy) return;
+
+    logPrimaryConfirmChoice("retailer");
+    void Firestore.logEvent({
+      type: "view_change",
+      view: "checkout",
+      source: "cart_confirm",
+      productId: pendingBuy.id,
+      meta: {
+        panel: "cart_confirm_open_retailer_click",
+        preferRetailer: preferRetailer ? 1 : 0,
+      },
+    }).catch(console.warn);
+    void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
+    setPendingBuy(null);
   };
 
   // lock body scroll + close on Escape
@@ -454,21 +472,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          logPrimaryConfirmChoice("retailer");
-                          void Firestore.logEvent({
-                            type: "view_change",
-                            view: "checkout",
-                            source: "cart_confirm",
-                            productId: pendingBuy.id,
-                            meta: {
-                              panel: "cart_confirm_open_retailer_click",
-                              preferRetailer: preferRetailer ? 1 : 0,
-                            },
-                          }).catch(console.warn);
-                          void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
-                          setPendingBuy(null);
-                        }}
+                        onClick={onConfirmRetailer}
                         className="h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold hover:bg-slate-50 active:scale-95 transition"
                       >
                         Open retailer ↗
@@ -478,21 +482,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     <>
                       <button
                         type="button"
-                        onClick={() => {
-                          logPrimaryConfirmChoice("retailer");
-                          void Firestore.logEvent({
-                            type: "view_change",
-                            view: "checkout",
-                            source: "cart_confirm",
-                            productId: pendingBuy.id,
-                            meta: {
-                              panel: "cart_confirm_open_retailer_click",
-                              preferRetailer: preferRetailer ? 1 : 0,
-                            },
-                          }).catch(console.warn);
-                          void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
-                          setPendingBuy(null);
-                        }}
+                        onClick={onConfirmRetailer}
                         className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
                       >
                         Open retailer ↗
@@ -634,8 +624,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       <button
                         onClick={() => {
                           setPostBuyLeadOpen(false);
-                          setPendingBuy(p);
-                          setLastBuyProduct(p);
+                          openConfirm(p);
                         }}
                         className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition flex items-center gap-1"
                       >
