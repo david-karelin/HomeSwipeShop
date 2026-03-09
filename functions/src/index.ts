@@ -199,24 +199,30 @@ function buildGenericLeadEmail(opts?: { heading?: string; intro?: string; sid?: 
 }
 
 async function logEmailEvent(opts: {
-	uid: string;
-	source: string;
-	view: string;
+	uid: string | null;
 	leadId: string;
 	panel: "email_sent" | "email_failed";
 	meta?: Record<string, any>;
 }) {
+  const sid = `server_${opts.leadId}`;
   const base = {
     type: "view_change",
-    uid: opts.uid,
-    sessionId: `server_${opts.leadId}`,
-    view: opts.view || "unknown",
-    source: opts.source || "server",
+    uid: opts.uid ?? null,
+    sessionId: sid,
+    view: "server",
+    source: "email",
+    productId: null,
+    category: null,
+    price: null,
     utm: {},
     meta: {
       panel: opts.panel,
       leadId: opts.leadId,
+      provider: "resend",
       ...(opts.meta ?? {}),
+      dedupeKey: `${opts.panel}_${sid}`,
+      loggedAtMs: Date.now(),
+      sid,
     },
     createdAt: FieldValue.serverTimestamp(),
   };
@@ -240,7 +246,6 @@ export const sendLeadEmail = onDocumentCreated(
     const email = String(lead?.email ?? "").trim().toLowerCase();
     const uid = String(lead?.uid ?? "");
     const source = String(lead?.source ?? "unknown");
-    const view = String(lead?.view ?? "unknown");
     const meta = asMap(lead?.meta);
 
     if (!email || email.length < 5) {
@@ -379,11 +384,9 @@ export const sendLeadEmail = onDocumentCreated(
 
       await logEmailEvent({
         uid,
-        source,
-        view,
         leadId,
         panel: "email_sent",
-        meta: {sid, kind, emailId: resendId},
+        meta: {kind, emailId: resendId},
       });
 
       logger.info("Email sent", {leadId, email, source, id: resendId});
@@ -398,11 +401,9 @@ export const sendLeadEmail = onDocumentCreated(
 
       await logEmailEvent({
         uid,
-        source,
-        view,
         leadId,
         panel: "email_failed",
-        meta: {sid, kind, error: String(err?.message ?? err)},
+        meta: {kind, error: String(err?.message ?? err)},
       });
     }
   }

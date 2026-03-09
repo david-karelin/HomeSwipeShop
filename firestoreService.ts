@@ -454,8 +454,9 @@ export async function logEvent(payload: {
     return;
   }
 
-  const category = meta?.category ?? null;
-  const price = meta?.price ?? null;
+  const category = typeof meta?.category === "string" ? meta.category : null;
+  const parsedPrice = Number(meta?.price);
+  const price = Number.isFinite(parsedPrice) ? parsedPrice : null;
 
   const base: any = {
     type: payload.type,

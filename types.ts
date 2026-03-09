@@ -39,6 +39,22 @@ export interface UserPreferences {
   feedIndex: number;
 }
 
+export type EmailKind = "cart" | "roomscan" | "generic" | "unknown";
+
+export type EmailKindStat = {
+  sent: number;
+  failed: number;
+  returned: number;
+  cleanReturned: number;
+  uniqueSent: number;
+  uniqueReturned: number;
+};
+
+export type TopEmailErrorRow = {
+  message: string;
+  count: number;
+};
+
 export type AppState =
   | 'auth'
   | 'interests'

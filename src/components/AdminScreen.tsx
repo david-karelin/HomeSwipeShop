@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, getDocs, orderBy, query, Timestamp, where } from "firebase/firestore";
 import { db, ensureUser, ensureUserReady } from "../../firestoreService";
 import { auth } from "../../firebase";
+import type { EmailKind, EmailKindStat, TopEmailErrorRow } from "../../types";
 import { fetchRecentEvents, fmtCreatedAt, type AdminEventRow } from "../lib/adminEvents";
 
 type EventType =
@@ -30,6 +31,15 @@ type Stat = {
   sessions: number;
 };
 
+type EmailKindAgg = {
+  sent: number;
+  failed: number;
+  returned: number;
+  cleanReturned: number;
+  uniqueSent: Set<string>;
+  uniqueReturned: Set<string>;
+};
+
 type PairKey = `${string}|${string}`;
 
 type StatsState = {
@@ -43,9 +53,13 @@ type StatsState = {
     sent: Stat;
     failed: Stat;
     returned: Stat;
+    cleanReturnCount: number;
     uniqueSentSids: number;
     uniqueReturnSids: number;
   };
+  emailByKind: Record<string, EmailKindStat>;
+  visibleEmailKinds: string[];
+  topEmailErrors: TopEmailErrorRow[];
   utmReturnSessions: {
     emailLeadCartLinks: number;
   };
@@ -156,9 +170,13 @@ async function fetchAllStatsSince(
     sent: Stat;
     failed: Stat;
     returned: Stat;
+    cleanReturnCount: number;
     uniqueSentSids: number;
     uniqueReturnSids: number;
   };
+  emailByKind: Record<string, EmailKindStat>;
+  visibleEmailKinds: string[];
+  topEmailErrors: TopEmailErrorRow[];
   utmReturnSessions: {
     emailLeadCartLinks: number;
   };
@@ -221,6 +239,7 @@ async function fetchAllStatsSince(
   const confirmPrimaryDismissSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
 
   const emailPanelCounts = { email_sent: 0, email_failed: 0, email_return: 0 };
+  const emailPanelCounts2 = { email_return_clean: 0 };
   const emailPanelSessionSets = {
     email_sent: new Set<string>(),
     email_failed: new Set<string>(),
@@ -230,6 +249,30 @@ async function fetchAllStatsSince(
     email_sent: new Set<string>(),
     email_return: new Set<string>(),
   };
+
+  const emailByKindAgg: Record<string, EmailKindAgg> = {};
+  const sidToKind = new Map<string, EmailKind>();
+  const emailErrorCounts = new Map<string, number>();
+
+  function kindFromUtmCampaign(campaignRaw: any): EmailKind {
+    const campaign = String(campaignRaw ?? "").toLowerCase();
+    if (campaign === "cart_links") return "cart";
+    if (campaign === "roomscan_picks") return "roomscan";
+    if (campaign === "generic_links") return "generic";
+    return "unknown";
+  }
+
+  function ensureKind(kind: EmailKind) {
+    if (emailByKindAgg[kind]) return;
+    emailByKindAgg[kind] = {
+      sent: 0,
+      failed: 0,
+      returned: 0,
+      cleanReturned: 0,
+      uniqueSent: new Set<string>(),
+      uniqueReturned: new Set<string>(),
+    };
+  }
 
   const emailLeadReturnSessionSet = new Set<string>();
 
@@ -243,6 +286,25 @@ async function fetchAllStatsSince(
 
   snap.forEach((d) => {
     const data = d.data() as any;
+    if (String(data?.type ?? "") !== "view_change") return;
+    if (String(data?.source ?? "") !== "email") return;
+
+    const meta =
+      data?.meta && typeof data.meta === "object" && !Array.isArray(data.meta) ? data.meta : {};
+    if (String(meta?.panel ?? "") !== "email_sent") return;
+
+    const metaSid = meta?.sid != null ? String(meta.sid) : "";
+    if (!metaSid) return;
+
+    const rawKind = String(meta?.kind ?? "").toLowerCase();
+    const kind: EmailKind =
+      rawKind === "cart" || rawKind === "roomscan" || rawKind === "generic" ? rawKind : "unknown";
+
+    sidToKind.set(metaSid, kind);
+  });
+
+  snap.forEach((d) => {
+    const data = d.data() as any;
     const t = String(data?.type ?? "");
 
     if (!allowed.has(t)) return;
@@ -251,18 +313,6 @@ async function fetchAllStatsSince(
 
     const sid = data?.sessionId != null ? String(data.sessionId) : "";
     if (sid) sessionSets[t].add(sid);
-
-    if (t === "session_start" && sid) {
-      const utmRaw =
-        data?.utm && typeof data.utm === "object" && !Array.isArray(data.utm) ? data.utm : {};
-      const utmSource = String(utmRaw?.utm_source ?? data?.utm_source ?? "").toLowerCase();
-      const utmMedium = String(utmRaw?.utm_medium ?? data?.utm_medium ?? "").toLowerCase();
-      const utmCampaign = String(utmRaw?.utm_campaign ?? data?.utm_campaign ?? "").toLowerCase();
-
-      if (utmSource === "email" && utmMedium === "lead" && utmCampaign === "cart_links") {
-        emailLeadReturnSessionSet.add(sid);
-      }
-    }
 
     if (t === "lead_submit" && sid) {
       const src = String(data?.source ?? "");
@@ -278,18 +328,63 @@ async function fetchAllStatsSince(
         data?.meta && typeof data.meta === "object" && !Array.isArray(data.meta) ? data.meta : {};
       const panel = String(meta?.panel ?? "");
       const metaSid = meta?.sid != null ? String(meta.sid) : "";
+      const sidMissing = meta?.sidMissing === 1 || meta?.sidMissing === true;
 
-      if (panel === "email_sent") {
-        emailPanelCounts.email_sent += 1;
-        emailPanelSessionSets.email_sent.add(sid);
-        if (metaSid) emailPanelSidSets.email_sent.add(metaSid);
-      } else if (panel === "email_failed") {
-        emailPanelCounts.email_failed += 1;
-        emailPanelSessionSets.email_failed.add(sid);
-      } else if (panel === "email_return") {
-        emailPanelCounts.email_return += 1;
-        emailPanelSessionSets.email_return.add(sid);
-        if (metaSid) emailPanelSidSets.email_return.add(metaSid);
+      // ---- EMAIL PIPELINE EVENTS (server + client) ----
+      if (src === "email") {
+        const utmRaw =
+          data?.utm && typeof data.utm === "object" && !Array.isArray(data.utm) ? data.utm : {};
+        const campaignKind = kindFromUtmCampaign(utmRaw?.utm_campaign);
+
+        if (panel === "email_sent") {
+          const rawKind = String(meta?.kind ?? "").toLowerCase();
+          const kind: EmailKind =
+            rawKind === "cart" || rawKind === "roomscan" || rawKind === "generic" ? rawKind : "unknown";
+          ensureKind(kind);
+
+          emailPanelCounts.email_sent += 1;
+          emailPanelSessionSets.email_sent.add(sid);
+          emailByKindAgg[kind].sent += 1;
+
+          if (metaSid) {
+            emailPanelSidSets.email_sent.add(metaSid);
+            emailByKindAgg[kind].uniqueSent.add(metaSid);
+            sidToKind.set(metaSid, kind);
+          }
+        } else if (panel === "email_failed") {
+          const rawKind = String(meta?.kind ?? "").toLowerCase();
+          const kind: EmailKind =
+            rawKind === "cart" || rawKind === "roomscan" || rawKind === "generic" ? rawKind : "unknown";
+          ensureKind(kind);
+
+          emailPanelCounts.email_failed += 1;
+          emailPanelSessionSets.email_failed.add(sid);
+          emailByKindAgg[kind].failed += 1;
+
+          const msg = String(meta?.error ?? "unknown").slice(0, 200);
+          emailErrorCounts.set(msg, (emailErrorCounts.get(msg) ?? 0) + 1);
+        } else if (panel === "email_return") {
+          const kind: EmailKind =
+            !sidMissing && metaSid && sidToKind.get(metaSid) ? sidToKind.get(metaSid)! : campaignKind;
+          ensureKind(kind);
+
+          emailPanelCounts.email_return += 1;
+          emailPanelSessionSets.email_return.add(sid);
+          emailByKindAgg[kind].returned += 1;
+
+          if (!sidMissing && metaSid) {
+            emailByKindAgg[kind].cleanReturned += 1;
+            emailByKindAgg[kind].uniqueReturned.add(metaSid);
+            emailPanelCounts2.email_return_clean += 1;
+            emailPanelSidSets.email_return.add(metaSid);
+          }
+
+          if (String(utmRaw?.utm_source ?? "").toLowerCase() === "email"
+            && String(utmRaw?.utm_medium ?? "").toLowerCase() === "lead"
+            && String(utmRaw?.utm_campaign ?? "").toLowerCase() === "cart_links") {
+            emailLeadReturnSessionSet.add(sid);
+          }
+        }
       }
 
       if (panel === "lead_prompt_shown" && leadSourceSet.has(src)) {
@@ -427,6 +522,28 @@ async function fetchAllStatsSince(
     );
   }
 
+  const emailByKind: Record<string, EmailKindStat> = {};
+  for (const kind of Object.keys(emailByKindAgg)) {
+    const agg = emailByKindAgg[kind];
+    emailByKind[kind] = {
+      sent: agg.sent,
+      failed: agg.failed,
+      returned: agg.returned,
+      cleanReturned: agg.cleanReturned,
+      uniqueSent: agg.uniqueSent.size,
+      uniqueReturned: agg.uniqueReturned.size,
+    };
+  }
+
+  const visibleEmailKinds = Object.keys(emailByKind)
+    .filter((kind) => (emailByKind[kind].sent + emailByKind[kind].failed + emailByKind[kind].returned) > 0)
+    .sort((a, b) => (emailByKind[b].sent - emailByKind[a].sent));
+
+  const topEmailErrors = [...emailErrorCounts.entries()]
+    .map(([message, count]) => ({ message, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
   const confirmByBucket: Record<ConfirmBucket, {
     shown: Stat;
     emailClick: Stat;
@@ -496,9 +613,13 @@ async function fetchAllStatsSince(
         count: emailPanelCounts.email_return,
         sessions: emailPanelSessionSets.email_return.size,
       },
+      cleanReturnCount: emailPanelCounts2.email_return_clean,
       uniqueSentSids: emailPanelSidSets.email_sent.size,
       uniqueReturnSids: emailPanelSidSets.email_return.size,
     },
+    emailByKind,
+    visibleEmailKinds,
+    topEmailErrors,
     utmReturnSessions: {
       emailLeadCartLinks: emailLeadReturnSessionSet.size,
     },
@@ -593,9 +714,13 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     sent: { count: 0, sessions: 0 },
     failed: { count: 0, sessions: 0 },
     returned: { count: 0, sessions: 0 },
+    cleanReturnCount: 0,
     uniqueSentSids: 0,
     uniqueReturnSids: 0,
   };
+  const emailByKind = stats?.emailByKind ?? ({} as Record<string, EmailKindStat>);
+  const visibleEmailKinds = stats?.visibleEmailKinds ?? [];
+  const topEmailErrors = stats?.topEmailErrors ?? [];
   const utmReturnSessions = stats?.utmReturnSessions ?? {
     emailLeadCartLinks: 0,
   };
@@ -651,6 +776,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const emailSentRate = pct(emailPanel.sent.count, ev("lead_submit"));
   const emailFailRate = pct(emailPanel.failed.count, ev("lead_submit"));
   const emailReturnPerSentRate = pct(emailPanel.returned.count, emailPanel.sent.count);
+  const cleanEmailReturnPerSentRate = pct(emailPanel.cleanReturnCount, emailPanel.sent.count);
   const uniqueEmailReturnPerSentRate = pct(emailPanel.uniqueReturnSids, emailPanel.uniqueSentSids);
   const leadPerBuy   = pct(sessNum("lead_submit", "buy_click"), sess("buy_click"));
   const leadPerBuy_cartConfirm = pct(leadPairsBySource["cart_confirm"]?.perBuy ?? 0, sess("buy_click"));
@@ -806,6 +932,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="font-black text-slate-900">{emailReturnPerSentRate}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-slate-600">Clean return rate (tracked email_return / email_sent)</span>
+            <span className="font-black text-slate-900">{cleanEmailReturnPerSentRate}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-600">Unique return rate (distinct email_return.sid / email_sent.sid)</span>
             <span className="font-black text-slate-900">{uniqueEmailReturnPerSentRate}</span>
           </div>
@@ -923,6 +1053,67 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Pick dismiss rate (pick_dismiss / pick_impression)</span>
             <span className="font-black text-slate-900">{pickDismiss}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-3xl border border-slate-100 bg-white p-5">
+          <div className="text-sm font-extrabold text-slate-900 mb-3">Email KPIs By Kind</div>
+
+          <div className="space-y-3 text-sm">
+            {visibleEmailKinds.length ? visibleEmailKinds.map((kind) => {
+              const statsForKind = emailByKind[kind];
+              return (
+                <div key={kind} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-black text-slate-900 capitalize">{kind}</span>
+                    <span className="text-xs font-bold text-slate-500">sent {statsForKind.sent}</span>
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Failures</span>
+                      <span className="font-black text-slate-900">{statsForKind.failed}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Returns</span>
+                      <span className="font-black text-slate-900">{statsForKind.returned}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Clean returns</span>
+                      <span className="font-black text-slate-900">{statsForKind.cleanReturned}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Return rate</span>
+                      <span className="font-black text-slate-900">{pct(statsForKind.returned, statsForKind.sent)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Unique return rate</span>
+                      <span className="font-black text-slate-900">{pct(statsForKind.uniqueReturned, statsForKind.uniqueSent)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="text-sm text-slate-500">No email events in range.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-5">
+          <div className="text-sm font-extrabold text-slate-900 mb-3">Top Email Errors</div>
+
+          <div className="space-y-3 text-sm">
+            {topEmailErrors.length ? topEmailErrors.map((row) => (
+              <div key={row.message} className="rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                <div className="flex justify-between items-start gap-3">
+                  <span className="text-rose-900 break-words">{row.message}</span>
+                  <span className="shrink-0 font-black text-rose-700">{row.count}</span>
+                </div>
+              </div>
+            )) : (
+              <div className="text-sm text-slate-500">No email failures in range.</div>
+            )}
           </div>
         </div>
       </div>

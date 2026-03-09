@@ -7,7 +7,7 @@ import CheckoutLinksModal from './components/CheckoutLinksModal';
 import AdminScreen from './src/components/AdminScreen';
 import HowItWorksModal from './src/components/HowItWorksModal';
 import RoomScanPage from './src/pages/RoomScanPage';
-import { getUtmFromLocation } from './src/lib/utm';
+import type { UTM } from './src/lib/utm';
 import type { RoomScanAnalysis } from './src/services/localRoomScan';
 import seligoLogo from './src/assets/seligo-logo-primary-0EA5E9.png';
 import { 
@@ -176,6 +176,31 @@ const INTEREST_IDS = new Set([
 
 const isVibeTag = (t: string) => VIBE_TAGS.has(t);
 const isRoomTag = (t: string) => ROOM_TAGS.has(t);
+
+function readEmailAttribution(): { utm?: UTM; sid?: string } {
+  const params = new URLSearchParams(window.location.search);
+
+  const utm: UTM = {};
+  const keys: Array<keyof UTM> = [
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+    "gclid",
+    "fbclid",
+  ];
+
+  for (const k of keys) {
+    const v = params.get(k);
+    if (v) (utm as any)[k] = v;
+  }
+
+  const sid = params.get("sid") ?? undefined;
+  const hasUtm = Object.keys(utm).length > 0;
+
+  return { utm: hasUtm ? utm : undefined, sid };
+}
 
 function NavItem({
   active,
@@ -438,18 +463,20 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const utm = getUtmFromLocation();
-    const sid = params.get("sid");
+    const { utm, sid } = readEmailAttribution();
 
     if (!utm && !sid) return;
 
-    const key = `seligo_email_return_logged_${sid ?? "nosid"}`;
+    const utmObj = utm ?? {};
+    const key = `seligo_email_return_logged_${sid ?? "nosid"}_${utmObj?.utm_campaign ?? "na"}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
 
+    const dedupeKey =
+      `email_return_${sid ?? "nosid"}_${utmObj?.utm_source ?? "na"}_${utmObj?.utm_medium ?? "na"}_${utmObj?.utm_campaign ?? "na"}_${utmObj?.utm_content ?? "na"}_${utmObj?.utm_term ?? "na"}`;
+
     try {
-      localStorage.setItem("seligo_last_utm", JSON.stringify({ utm: utm ?? null, sid: sid ?? null }));
+      localStorage.setItem("seligo_last_utm", JSON.stringify({ utm: utmObj, sid }));
     } catch {
       // ignore storage failures
     }
@@ -459,8 +486,8 @@ const App: React.FC = () => {
         type: "view_change",
         view: "landing",
         source: "email",
-        meta: { panel: "email_return", sid: sid ?? undefined },
-        utm: utm ?? undefined,
+        meta: { panel: "email_return", sid: sid ?? null, sidMissing: sid ? 0 : 1, dedupeKey },
+        utm: utmObj,
       }))
       .catch(console.warn);
   }, []);
