@@ -5,6 +5,23 @@ import * as Firestore from "../firestoreService";
 
 const AMAZON_TAG = import.meta.env.VITE_AMAZON_ASSOC_TAG || "";
 
+type ConfirmVariant = "A" | "B";
+
+function getConfirmVariantNew(): ConfirmVariant {
+  const key = "seligo_confirm_new_variant_v1";
+
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "A" || value === "B") return value;
+
+    const pick: ConfirmVariant = Math.random() < 0.5 ? "A" : "B";
+    sessionStorage.setItem(key, pick);
+    return pick;
+  } catch {
+    return Math.random() < 0.5 ? "A" : "B";
+  }
+}
+
 
 type CheckoutLinksModalProps = {
   open: boolean;
@@ -104,6 +121,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   onOpenProduct,
 }) => {
   const [pendingBuy, setPendingBuy] = useState<Product | null>(null);
+  const [confirmVariant, setConfirmVariant] = useState<ConfirmVariant>("A");
   const [lastBuyProduct, setLastBuyProduct] = useState<Product | null>(null);
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
   const [postBuyPrompted, setPostBuyPrompted] = useState(false);
@@ -222,9 +240,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const preferRetailer = hasSavedLeadEmail;
 
   function openConfirm(p: Product) {
-    const prefer = hasSavedLeadEmail;
+    const isReturning = hasSavedLeadEmail;
+    const variant: ConfirmVariant = isReturning ? "A" : getConfirmVariantNew();
 
     setPendingBuy(p);
+    setConfirmVariant(variant);
     setLastBuyProduct(p);
 
     void Firestore.logEvent({
@@ -234,7 +254,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       productId: p.id,
       meta: {
         panel: "cart_confirm_card_shown",
-        preferRetailer: prefer ? 1 : 0,
+        preferRetailer: isReturning ? 1 : 0,
+        variant,
       },
     }).catch(console.warn);
   }
@@ -319,6 +340,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     if (primaryChoiceLoggedRef.current) return;
     primaryChoiceLoggedRef.current = true;
 
+    const variant: ConfirmVariant = preferRetailer ? "A" : confirmVariant;
+
     void Firestore.logEvent({
       type: "view_change",
       view: "checkout",
@@ -328,6 +351,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         panel: "cart_confirm_primary_choice",
         choice,
         preferRetailer: preferRetailer ? 1 : 0,
+        variant,
       },
     }).catch(console.warn);
   };
@@ -336,6 +360,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     if (!pendingBuy) return;
 
     logPrimaryConfirmChoice("retailer");
+
     void Firestore.logEvent({
       type: "view_change",
       view: "checkout",
@@ -344,8 +369,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       meta: {
         panel: "cart_confirm_open_retailer_click",
         preferRetailer: preferRetailer ? 1 : 0,
+        variant: preferRetailer ? "A" : confirmVariant,
       },
     }).catch(console.warn);
+
     void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
     setPendingBuy(null);
   };
@@ -432,6 +459,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     <div className="text-sm text-slate-600 mt-1">
                       We’ll send links + price drops. No spam.
                     </div>
+                    {!preferRetailer && confirmVariant === "B" ? (
+                      <div className="mt-2 text-xs text-slate-600">
+                        Instant links to your cart + price-drop alerts.
+                      </div>
+                    ) : null}
                   </div>
 
                   <button
@@ -446,6 +478,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         meta: {
                           panel: "cart_confirm_dismiss",
                           preferRetailer: preferRetailer ? 1 : 0,
+                          variant: preferRetailer ? "A" : confirmVariant,
                         },
                       }).catch(console.warn);
                       setPendingBuy(null);
@@ -473,6 +506,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                             meta: {
                               panel: "cart_confirm_email_click",
                               preferRetailer: preferRetailer ? 1 : 0,
+                              variant: preferRetailer ? "A" : confirmVariant,
                             },
                           }).catch(console.warn);
                           openLeadPanel("cart_confirm");
@@ -512,6 +546,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                             meta: {
                               panel: "cart_confirm_email_click",
                               preferRetailer: preferRetailer ? 1 : 0,
+                              variant: preferRetailer ? "A" : confirmVariant,
                             },
                           }).catch(console.warn);
                           openLeadPanel("cart_confirm");
