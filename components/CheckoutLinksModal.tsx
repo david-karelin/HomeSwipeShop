@@ -7,19 +7,13 @@ const AMAZON_TAG = import.meta.env.VITE_AMAZON_ASSOC_TAG || "";
 
 type ConfirmVariant = "A" | "B";
 
-function getConfirmVariantNew(): ConfirmVariant {
-  const key = "seligo_confirm_new_variant_v1";
-
-  try {
-    const value = sessionStorage.getItem(key);
-    if (value === "A" || value === "B") return value;
-
-    const pick: ConfirmVariant = Math.random() < 0.5 ? "A" : "B";
-    sessionStorage.setItem(key, pick);
-    return pick;
-  } catch {
-    return Math.random() < 0.5 ? "A" : "B";
+function variantFromSessionId(sessionId: string): ConfirmVariant {
+  let hash = 0;
+  for (let index = 0; index < sessionId.length; index += 1) {
+    hash = (hash * 31 + sessionId.charCodeAt(index)) | 0;
   }
+
+  return Math.abs(hash) % 2 === 0 ? "A" : "B";
 }
 
 
@@ -241,7 +235,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   function openConfirm(p: Product) {
     const isReturning = hasSavedLeadEmail;
-    const variant: ConfirmVariant = isReturning ? "A" : getConfirmVariantNew();
+    const sessionId = Firestore.getOrCreateSessionId();
+    const variant: ConfirmVariant = isReturning ? "A" : variantFromSessionId(sessionId);
 
     setPendingBuy(p);
     setConfirmVariant(variant);

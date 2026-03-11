@@ -396,7 +396,7 @@ const UTM_KEYS = [
   "fbclid",
 ] as const;
 
-function getOrCreateSessionId() {
+export function getOrCreateSessionId() {
   const key = "seligo_session_id";
   let id = localStorage.getItem(key);
   if (!id) {
