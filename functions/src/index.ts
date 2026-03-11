@@ -125,10 +125,11 @@ function buildRoomscanEmail(opts: {
     (sid ? `&sid=${sid}` : "");
 
   const cta = `
-    <div style="margin-top:16px;">
+    <div style="margin-top:28px; padding-top:18px; border-top:1px solid #e2e8f0; text-align:left;">
       <a href="${appUrl}" style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;">
         See more picks →
       </a>
+      <div style="height:10px; line-height:10px;">&nbsp;</div>
     </div>
   `;
 
@@ -142,6 +143,9 @@ function buildRoomscanEmail(opts: {
 
     <div style="margin-top:16px;">
       ${itemsHtml || "<div style=\"color:#475569;\">No items found.</div>"}
+
+      <div style="height:18px; line-height:18px; margin:18px 0 0 0; clear:both;">&nbsp;</div>
+
       ${cta}
       <div style="color:#94a3b8; font-size:12px; margin-top:16px;">
         You’re receiving this because you requested links from Seligo.
