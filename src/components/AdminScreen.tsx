@@ -31,6 +31,38 @@ type Stat = {
   sessions: number;
 };
 
+type ConfirmStats = {
+  shown: Stat;
+  emailClick: Stat;
+  retailerClick: Stat;
+  dismiss: Stat;
+};
+
+type ConfirmRateStats = {
+  shownRate: string;
+  emailCtr: string;
+  retailerCtr: string;
+  dismissCtr: string;
+  primaryEmailShare: string;
+  primaryRetailerShare: string;
+  primaryDismissShare: string;
+};
+
+type ConfirmVariant = "A" | "B";
+
+type ConfirmVariantNewStats = {
+  shown: Stat;
+  emailClick: Stat;
+  retailerClick: Stat;
+  dismiss: Stat;
+  emailCtr: string;
+  retailerCtr: string;
+  dismissCtr: string;
+  primaryEmailShare: string;
+  primaryRetailerShare: string;
+  primaryDismissShare: string;
+};
+
 type EmailKindAgg = {
   sent: number;
   failed: number;
@@ -49,6 +81,7 @@ type StatsState = {
   leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
   promptBySource: Record<string, Stat>;
   leadPerPromptSessionsBySource: Record<string, number>;
+  leadDocCreated: Stat;
   emailPanel: {
     sent: Stat;
     failed: Stat;
@@ -63,21 +96,9 @@ type StatsState = {
   utmReturnSessions: {
     emailLeadCartLinks: number;
   };
-  confirmByBucket: Record<ConfirmBucket, {
-    shown: Stat;
-    emailClick: Stat;
-    retailerClick: Stat;
-    dismiss: Stat;
-  }>;
-  confirmRatesByBucket: Record<ConfirmBucket, {
-    shownRate: string;
-    emailCtr: string;
-    retailerCtr: string;
-    dismissCtr: string;
-    primaryEmailShare: string;
-    primaryRetailerShare: string;
-    primaryDismissShare: string;
-  }>;
+  confirmByBucket: Record<ConfirmBucket, ConfirmStats>;
+  confirmRatesByBucket: Record<ConfirmBucket, ConfirmRateStats>;
+  confirmByVariantNew: Record<ConfirmVariant, ConfirmVariantNewStats>;
 };
 
 function pairKey(num: string, den: string) {
@@ -154,48 +175,13 @@ const leadSourceSet = new Set<string>(leadSources);
 
 const confirmBuckets = ["new", "returning"] as const;
 type ConfirmBucket = (typeof confirmBuckets)[number];
+const confirmVariants: ConfirmVariant[] = ["A", "B"];
 
 async function fetchAllStatsSince(
   since: Timestamp,
   types: string[],
   pairs: ReadonlyArray<readonly [string, string]>
-): Promise<{
-  byType: Record<string, Stat>;
-  pairSessions: Record<PairKey, number>;
-  leadBySource: Record<string, Stat>;
-  leadPairSessionsBySource: Record<string, { perCheckout: number; perBuy: number }>;
-  promptBySource: Record<string, Stat>;
-  leadPerPromptSessionsBySource: Record<string, number>;
-  emailPanel: {
-    sent: Stat;
-    failed: Stat;
-    returned: Stat;
-    cleanReturnCount: number;
-    uniqueSentSids: number;
-    uniqueReturnSids: number;
-  };
-  emailByKind: Record<string, EmailKindStat>;
-  visibleEmailKinds: string[];
-  topEmailErrors: TopEmailErrorRow[];
-  utmReturnSessions: {
-    emailLeadCartLinks: number;
-  };
-  confirmByBucket: Record<ConfirmBucket, {
-    shown: Stat;
-    emailClick: Stat;
-    retailerClick: Stat;
-    dismiss: Stat;
-  }>;
-  confirmRatesByBucket: Record<ConfirmBucket, {
-    shownRate: string;
-    emailCtr: string;
-    retailerCtr: string;
-    dismissCtr: string;
-    primaryEmailShare: string;
-    primaryRetailerShare: string;
-    primaryDismissShare: string;
-  }>;
-}> {
+): Promise<StatsState> {
   const trackedTypes = Array.from(new Set([...types, ...REQUIRED_EVENT_TYPES]));
   const allowed = new Set<string>(trackedTypes);
 
@@ -238,8 +224,25 @@ async function fetchAllStatsSince(
   const confirmPrimaryDismissCounts: Record<ConfirmBucket, number> = { new: 0, returning: 0 };
   const confirmPrimaryDismissSessionSets: Record<ConfirmBucket, Set<string>> = { new: new Set(), returning: new Set() };
 
+  const shownCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+  const shownSessByVar: Record<ConfirmVariant, Set<string>> = { A: new Set(), B: new Set() };
+
+  const emailClickCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+  const emailClickSessByVar: Record<ConfirmVariant, Set<string>> = { A: new Set(), B: new Set() };
+
+  const retailerClickCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+  const retailerClickSessByVar: Record<ConfirmVariant, Set<string>> = { A: new Set(), B: new Set() };
+
+  const dismissCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+  const dismissSessByVar: Record<ConfirmVariant, Set<string>> = { A: new Set(), B: new Set() };
+
+  const primaryEmailCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+  const primaryRetailerCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+  const primaryDismissCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
+
   const emailPanelCounts = { email_sent: 0, email_failed: 0, email_return: 0 };
   const emailPanelCounts2 = { email_return_clean: 0 };
+  const leadDocCreated = { count: 0, sessions: new Set<string>() };
   const emailPanelSessionSets = {
     email_sent: new Set<string>(),
     email_failed: new Set<string>(),
@@ -330,6 +333,11 @@ async function fetchAllStatsSince(
       const metaSid = meta?.sid != null ? String(meta.sid) : "";
       const sidMissing = meta?.sidMissing === 1 || meta?.sidMissing === true;
 
+      if (panel === "lead_doc_created") {
+        leadDocCreated.count += 1;
+        leadDocCreated.sessions.add(sid);
+      }
+
       // ---- EMAIL PIPELINE EVENTS (server + client) ----
       if (src === "email") {
         const utmRaw =
@@ -395,6 +403,8 @@ async function fetchAllStatsSince(
       if (src === "cart_confirm") {
         const preferRetailer = meta?.preferRetailer === 1 || meta?.preferRetailer === true;
         const bucket: ConfirmBucket = preferRetailer ? "returning" : "new";
+        const variantRaw = String(meta?.variant ?? "A").toUpperCase();
+        const variant: ConfirmVariant = variantRaw === "B" ? "B" : "A";
 
         if (panel === "cart_confirm_card_shown") {
           confirmShownCounts[bucket] += 1;
@@ -421,6 +431,27 @@ async function fetchAllStatsSince(
             confirmPrimaryDismissSessionSets[bucket].add(sid);
           }
         }
+
+        if (bucket === "new") {
+          if (panel === "cart_confirm_card_shown") {
+            shownCountsByVar[variant] += 1;
+            shownSessByVar[variant].add(sid);
+          } else if (panel === "cart_confirm_email_click") {
+            emailClickCountsByVar[variant] += 1;
+            emailClickSessByVar[variant].add(sid);
+          } else if (panel === "cart_confirm_open_retailer_click") {
+            retailerClickCountsByVar[variant] += 1;
+            retailerClickSessByVar[variant].add(sid);
+          } else if (panel === "cart_confirm_dismiss") {
+            dismissCountsByVar[variant] += 1;
+            dismissSessByVar[variant].add(sid);
+          } else if (panel === "cart_confirm_primary_choice") {
+            const choice = String(meta?.choice ?? "");
+            if (choice === "email") primaryEmailCountsByVar[variant] += 1;
+            else if (choice === "retailer") primaryRetailerCountsByVar[variant] += 1;
+            else if (choice === "dismiss") primaryDismissCountsByVar[variant] += 1;
+          }
+        }
       }
     }
   });
@@ -440,6 +471,7 @@ async function fetchAllStatsSince(
     for (const t of Object.keys(sessionSets)) {
       sessionSets[t] = new Set([...sessionSets[t]].filter((sid) => valid.has(sid)));
     }
+    leadDocCreated.sessions = new Set([...leadDocCreated.sessions].filter((sid) => valid.has(sid)));
     for (const s of leadSources) {
       leadSessionSets[s] = new Set([...leadSessionSets[s]].filter((sid) => valid.has(sid)));
       promptSessionSets[s] = new Set([...promptSessionSets[s]].filter((sid) => valid.has(sid)));
@@ -452,6 +484,12 @@ async function fetchAllStatsSince(
       confirmPrimaryEmailSessionSets[b] = new Set([...confirmPrimaryEmailSessionSets[b]].filter((sid) => valid.has(sid)));
       confirmPrimaryRetailerSessionSets[b] = new Set([...confirmPrimaryRetailerSessionSets[b]].filter((sid) => valid.has(sid)));
       confirmPrimaryDismissSessionSets[b] = new Set([...confirmPrimaryDismissSessionSets[b]].filter((sid) => valid.has(sid)));
+    }
+    for (const v of confirmVariants) {
+      shownSessByVar[v] = new Set([...shownSessByVar[v]].filter((sid) => valid.has(sid)));
+      emailClickSessByVar[v] = new Set([...emailClickSessByVar[v]].filter((sid) => valid.has(sid)));
+      retailerClickSessByVar[v] = new Set([...retailerClickSessByVar[v]].filter((sid) => valid.has(sid)));
+      dismissSessByVar[v] = new Set([...dismissSessByVar[v]].filter((sid) => valid.has(sid)));
     }
   }
 
@@ -544,12 +582,7 @@ async function fetchAllStatsSince(
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  const confirmByBucket: Record<ConfirmBucket, {
-    shown: Stat;
-    emailClick: Stat;
-    retailerClick: Stat;
-    dismiss: Stat;
-  }> = {
+  const confirmByBucket: Record<ConfirmBucket, ConfirmStats> = {
     new: {
       shown: { count: confirmShownCounts.new, sessions: shownNew },
       emailClick: { count: confirmEmailClickCounts.new, sessions: confirmEmailClickSessionSets.new.size },
@@ -564,15 +597,7 @@ async function fetchAllStatsSince(
     },
   };
 
-  const confirmRatesByBucket: Record<ConfirmBucket, {
-    shownRate: string;
-    emailCtr: string;
-    retailerCtr: string;
-    dismissCtr: string;
-    primaryEmailShare: string;
-    primaryRetailerShare: string;
-    primaryDismissShare: string;
-  }> = {
+  const confirmRatesByBucket: Record<ConfirmBucket, ConfirmRateStats> = {
     new: {
       shownRate: confirmShownRateNew,
       emailCtr: emailCtrNew,
@@ -593,6 +618,33 @@ async function fetchAllStatsSince(
     },
   };
 
+  const confirmByVariantNew: Record<ConfirmVariant, ConfirmVariantNewStats> = {
+    A: {
+      shown: { count: shownCountsByVar.A, sessions: shownSessByVar.A.size },
+      emailClick: { count: emailClickCountsByVar.A, sessions: emailClickSessByVar.A.size },
+      retailerClick: { count: retailerClickCountsByVar.A, sessions: retailerClickSessByVar.A.size },
+      dismiss: { count: dismissCountsByVar.A, sessions: dismissSessByVar.A.size },
+      emailCtr: pct(emailClickSessByVar.A.size, shownSessByVar.A.size),
+      retailerCtr: pct(retailerClickSessByVar.A.size, shownSessByVar.A.size),
+      dismissCtr: pct(dismissSessByVar.A.size, shownSessByVar.A.size),
+      primaryEmailShare: pct(primaryEmailCountsByVar.A, shownSessByVar.A.size),
+      primaryRetailerShare: pct(primaryRetailerCountsByVar.A, shownSessByVar.A.size),
+      primaryDismissShare: pct(primaryDismissCountsByVar.A, shownSessByVar.A.size),
+    },
+    B: {
+      shown: { count: shownCountsByVar.B, sessions: shownSessByVar.B.size },
+      emailClick: { count: emailClickCountsByVar.B, sessions: emailClickSessByVar.B.size },
+      retailerClick: { count: retailerClickCountsByVar.B, sessions: retailerClickSessByVar.B.size },
+      dismiss: { count: dismissCountsByVar.B, sessions: dismissSessByVar.B.size },
+      emailCtr: pct(emailClickSessByVar.B.size, shownSessByVar.B.size),
+      retailerCtr: pct(retailerClickSessByVar.B.size, shownSessByVar.B.size),
+      dismissCtr: pct(dismissSessByVar.B.size, shownSessByVar.B.size),
+      primaryEmailShare: pct(primaryEmailCountsByVar.B, shownSessByVar.B.size),
+      primaryRetailerShare: pct(primaryRetailerCountsByVar.B, shownSessByVar.B.size),
+      primaryDismissShare: pct(primaryDismissCountsByVar.B, shownSessByVar.B.size),
+    },
+  };
+
   return {
     byType,
     pairSessions,
@@ -600,6 +652,10 @@ async function fetchAllStatsSince(
     leadPairSessionsBySource,
     promptBySource,
     leadPerPromptSessionsBySource,
+    leadDocCreated: {
+      count: leadDocCreated.count,
+      sessions: leadDocCreated.sessions.size,
+    },
     emailPanel: {
       sent: {
         count: emailPanelCounts.email_sent,
@@ -625,6 +681,7 @@ async function fetchAllStatsSince(
     },
     confirmByBucket,
     confirmRatesByBucket,
+    confirmByVariantNew,
   };
 }
 
@@ -710,6 +767,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const leadPairsBySource = stats?.leadPairSessionsBySource ?? {};
   const promptBySource = stats?.promptBySource ?? {};
   const leadPerPromptSessionsBySource = stats?.leadPerPromptSessionsBySource ?? {};
+  const leadDocCreated = stats?.leadDocCreated ?? { count: 0, sessions: 0 };
   const emailPanel = stats?.emailPanel ?? {
     sent: { count: 0, sessions: 0 },
     failed: { count: 0, sessions: 0 },
@@ -758,6 +816,33 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
       primaryDismissShare: "—",
     },
   };
+  const confirmVariants: Array<"A" | "B"> = ["A", "B"];
+  const confirmByVariantNew = stats?.confirmByVariantNew ?? {
+    A: {
+      shown: { count: 0, sessions: 0 },
+      emailClick: { count: 0, sessions: 0 },
+      retailerClick: { count: 0, sessions: 0 },
+      dismiss: { count: 0, sessions: 0 },
+      emailCtr: "—",
+      retailerCtr: "—",
+      dismissCtr: "—",
+      primaryEmailShare: "—",
+      primaryRetailerShare: "—",
+      primaryDismissShare: "—",
+    },
+    B: {
+      shown: { count: 0, sessions: 0 },
+      emailClick: { count: 0, sessions: 0 },
+      retailerClick: { count: 0, sessions: 0 },
+      dismiss: { count: 0, sessions: 0 },
+      emailCtr: "—",
+      retailerCtr: "—",
+      dismissCtr: "—",
+      primaryEmailShare: "—",
+      primaryRetailerShare: "—",
+      primaryDismissShare: "—",
+    },
+  };
 
   const sess = (t: string) => byType[t]?.sessions ?? 0;
   const ev = (t: string) => byType[t]?.count ?? 0;
@@ -774,7 +859,9 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const buyRate      = pct(sessNum("buy_click", "checkout_open"), sess("checkout_open"));
   const leadRate     = pct(sessNum("lead_submit", "checkout_open"), sess("checkout_open"));
   const emailSentRate = pct(emailPanel.sent.count, ev("lead_submit"));
+  const emailSentPipelineRate = pct(emailPanel.sent.count, leadDocCreated.count);
   const emailFailRate = pct(emailPanel.failed.count, ev("lead_submit"));
+  const emailFailPipelineRate = pct(emailPanel.failed.count, leadDocCreated.count);
   const emailReturnPerSentRate = pct(emailPanel.returned.count, emailPanel.sent.count);
   const cleanEmailReturnPerSentRate = pct(emailPanel.cleanReturnCount, emailPanel.sent.count);
   const uniqueEmailReturnPerSentRate = pct(emailPanel.uniqueReturnSids, emailPanel.uniqueSentSids);
@@ -924,8 +1011,20 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
             <span className="font-black text-slate-900">{emailSentRate}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-slate-600">Email sent rate (pipeline: email_sent / lead_doc_created)</span>
+            <span className="font-black text-slate-900">{emailSentPipelineRate}</span>
+          </div>
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>Counts</span>
+            <span className="font-bold">{emailPanel.sent.count} / {leadDocCreated.count}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-600">Email failure rate (email_failed / lead_submit)</span>
             <span className="font-black text-slate-900">{emailFailRate}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Email failure rate (pipeline: email_failed / lead_doc_created)</span>
+            <span className="font-black text-slate-900">{emailFailPipelineRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Email return rate (email_return / email_sent)</span>
@@ -1037,6 +1136,56 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+
+        <div className="mt-6 rounded-3xl border border-slate-100 bg-white p-5">
+          <div className="text-sm font-extrabold text-slate-900 mb-3">Variant A vs B (New users)</div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {confirmVariants.map((variant) => {
+              const statsForVariant = confirmByVariantNew[variant];
+
+              return (
+                <div key={variant} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-black text-slate-900">Variant {variant}</span>
+                    <span className="text-xs font-bold text-slate-500">shown {statsForVariant.shown.sessions} sessions</span>
+                  </div>
+
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Shown sessions</span>
+                      <span className="font-black text-slate-900">{statsForVariant.shown.sessions}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Email CTR</span>
+                      <span className="font-black text-slate-900">{statsForVariant.emailCtr}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Retailer CTR</span>
+                      <span className="font-black text-slate-900">{statsForVariant.retailerCtr}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Dismiss CTR</span>
+                      <span className="font-black text-slate-900">{statsForVariant.dismissCtr}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Primary email share</span>
+                      <span className="font-black text-slate-900">{statsForVariant.primaryEmailShare}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Primary retailer share</span>
+                      <span className="font-black text-slate-900">{statsForVariant.primaryRetailerShare}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Primary dismiss share</span>
+                      <span className="font-black text-slate-900">{statsForVariant.primaryDismissShare}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
       <div className="mt-6 rounded-3xl border border-slate-100 bg-white p-5">
         <div className="text-sm font-extrabold text-slate-900 mb-3">RoomScan (session rates)</div>

@@ -321,20 +321,39 @@ export async function saveLead(payload: {
       docPayload.meta = payload.meta;
     }
 
-    await addDoc(collection(db, "leads"), docPayload);
+    return addDoc(collection(db, "leads"), docPayload);
   };
 
+  let leadRef;
   try {
-    await writeOnce();
+    leadRef = await writeOnce();
   } catch (e) {
     if (isPermissionDenied(e)) {
       await auth.currentUser?.getIdToken(true).catch(() => {});
       await new Promise((r) => setTimeout(r, 0));
-      await writeOnce();
-      return;
+      leadRef = await writeOnce();
+    } else {
+      throw e;
     }
-    throw e;
   }
+
+  const leadId = leadRef.id;
+  const sid = `server_${leadId}`;
+
+  void logEvent({
+    type: "view_change",
+    view: payload.view ?? "checkout",
+    source: payload.source ?? "lead",
+    meta: {
+      panel: "lead_doc_created",
+      leadId,
+      sid,
+    },
+  }).catch((eventError) => {
+    console.warn("lead_doc_created log failed:", eventError);
+  });
+
+  return { leadId, sid };
 }
 
 type EventType =
