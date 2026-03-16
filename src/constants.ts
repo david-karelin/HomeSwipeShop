@@ -1,63 +1,65 @@
+import { onboardingCopy } from "./content/copy";
+
 export const VIBE_CATEGORIES = [
   {
     id: "desk-setup",
-    label: "Desk Setup",
+    label: onboardingCopy.interestLabels["desk-setup"],
     emoji: "🖥️",
-    description: "Clean, aesthetic desk upgrades",
+    description: onboardingCopy.interestDescriptions["desk-setup"],
   },
   {
     id: "lighting",
-    label: "Lighting",
+    label: onboardingCopy.interestLabels.lighting,
     emoji: "💡",
-    description: "Lamps, glow, and cozy light",
+    description: onboardingCopy.interestDescriptions.lighting,
   },
   {
     id: "wall-decor",
-    label: "Wall Decor",
+    label: onboardingCopy.interestLabels["wall-decor"],
     emoji: "🖼️",
-    description: "Art, prints, and blank-wall fixes",
+    description: onboardingCopy.interestDescriptions["wall-decor"],
   },
   {
     id: "cozy-bedroom",
-    label: "Cozy Bedroom",
+    label: onboardingCopy.interestLabels["cozy-bedroom"],
     emoji: "🛏️",
-    description: "Soft, warm bedroom upgrades",
+    description: onboardingCopy.interestDescriptions["cozy-bedroom"],
   },
   {
     id: "storage",
-    label: "Storage",
+    label: onboardingCopy.interestLabels.storage,
     emoji: "🧺",
-    description: "Small-space organization wins",
+    description: onboardingCopy.interestDescriptions.storage,
   },
   {
     id: "mirrors",
-    label: "Mirrors",
+    label: onboardingCopy.interestLabels.mirrors,
     emoji: "🪞",
-    description: "Light, depth, and style",
+    description: onboardingCopy.interestDescriptions.mirrors,
   },
   {
     id: "plants",
-    label: "Plants",
+    label: onboardingCopy.interestLabels.plants,
     emoji: "🪴",
-    description: "Greenery and fresh accents",
+    description: onboardingCopy.interestDescriptions.plants,
   },
   {
     id: "shelf-styling",
-    label: "Shelf Styling",
+    label: onboardingCopy.interestLabels["shelf-styling"],
     emoji: "🪄",
-    description: "Shelves, ledges, and display pieces",
+    description: onboardingCopy.interestDescriptions["shelf-styling"],
   },
   {
     id: "small-space-fixes",
-    label: "Small Space Fixes",
+    label: onboardingCopy.interestLabels["small-space-fixes"],
     emoji: "✨",
-    description: "Affordable upgrades for tighter rooms",
+    description: onboardingCopy.interestDescriptions["small-space-fixes"],
   },
   {
     id: "under-50",
-    label: "Under $50",
+    label: onboardingCopy.interestLabels["under-50"],
     emoji: "💸",
-    description: "Cheap, swipeable finds",
+    description: onboardingCopy.interestDescriptions["under-50"],
   },
 ] as const;
 
@@ -128,36 +130,6 @@ export const QUICK_ACTIONS = [
     emoji: "💙",
     description: "Browse cheap yes/no room upgrades",
   },
-] as const;
-
-export const FEATURE_CARDS = [
-  {
-    title: "RoomScan",
-    emoji: "📸",
-    description: "Scan your room and get affordable picks that actually fit your space.",
-  },
-  {
-    title: "Inspo Match",
-    emoji: "🎯",
-    description: "Upload a room pic or screenshot and match that vibe with real products.",
-  },
-  {
-    title: "Style DNA",
-    emoji: "🧠",
-    description: "Your swipes teach Seligo what your room style actually is.",
-  },
-  {
-    title: "Complete the Corner",
-    emoji: "🪄",
-    description: "Get matching picks that upgrade one part of your room at a time.",
-  },
-] as const;
-
-export const HOW_IT_WORKS_STEPS = [
-  "Pick the kinds of room upgrades you want most.",
-  "Swipe cheap, aesthetic products you can instantly say yes or no to.",
-  "Use RoomScan or Inspo Match to get more personalized picks.",
-  "Save your favorites and build your vibe over time.",
 ] as const;
 
 export const SWIPE_FEED_RULES = {

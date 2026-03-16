@@ -1,9 +1,5 @@
 import { useEffect } from "react";
-import {
-  FEATURE_CARDS,
-  HOW_IT_WORKS_STEPS,
-  HERO_COPY,
-} from "../constants";
+import { onboardingCopy } from "../content/copy";
 
 export default function HowItWorksModal({
   open,
@@ -49,10 +45,10 @@ export default function HowItWorksModal({
             <div className="flex items-start justify-between gap-3">
               <div className="pr-2">
                 <h2 className="text-2xl font-black tracking-tight text-slate-900">
-                  {HERO_COPY.title}
+                  {onboardingCopy.heroTitle}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {HERO_COPY.subtitle}
+                  {onboardingCopy.heroSubtitle}
                 </p>
               </div>
 
@@ -61,14 +57,14 @@ export default function HowItWorksModal({
                 onClick={onClose}
                 className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-600"
               >
-                Close
+                {onboardingCopy.modalCloseLabel}
               </button>
             </div>
           </div>
 
           <div className="px-5 pb-5">
             <div className="mt-3 space-y-3">
-              {FEATURE_CARDS.map((card) => (
+              {onboardingCopy.featureCards.map((card) => (
                 <div
                   key={card.title}
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -86,11 +82,11 @@ export default function HowItWorksModal({
 
             <div className="mt-5 rounded-2xl bg-slate-50 p-4">
               <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-                How it works
+                {onboardingCopy.howItWorksTitle}
               </div>
 
               <div className="mt-3 space-y-3">
-                {HOW_IT_WORKS_STEPS.map((step, i) => (
+                {onboardingCopy.howItWorksSteps.map((step, i) => (
                   <div key={step} className="flex gap-3">
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-black text-white">
                       {i + 1}
@@ -108,7 +104,7 @@ export default function HowItWorksModal({
               onClick={onClose}
               className="mt-5 h-12 w-full rounded-2xl bg-[var(--seligo-cta)] text-sm font-black text-white shadow-sm active:scale-[0.99] transition"
             >
-              Start Swiping
+              {onboardingCopy.heroCta}
             </button>
           </div>
         </div>

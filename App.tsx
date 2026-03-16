@@ -6,9 +6,10 @@ import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
 import AdminScreen from './src/components/AdminScreen';
 import HowItWorksModal from './src/components/HowItWorksModal';
+import { onboardingCopy } from './src/content/copy';
 import InterestsPage from './src/pages/InterestsPage';
 import { VIBE_CATEGORIES, normalizeInterestIds } from './src/constants';
-import { displayMatchPercent, getSwipeScore, prepareSwipeFeed, prioritizeMainFeedInventory } from './src/lib/feed';
+import { prepareSwipeFeed, prioritizeMainFeedInventory } from './src/lib/feed';
 import RoomScanPage from './src/pages/RoomScanPage';
 import type { UTM } from './src/lib/utm';
 import type { RoomScanAnalysis } from './src/services/localRoomScan';
@@ -25,7 +26,6 @@ import {
   Plus, 
   ArrowLeft, 
   X, 
-  Sparkles, 
   BrainCircuit, 
   History, 
   Tag, 
@@ -646,16 +646,6 @@ const App: React.FC = () => {
     let s = 0;
     for (const t of p.tags || []) s += (tagScores[t] || 0);
     return s;
-  };
-
-  const matchPercent = (p: Product) => {
-    const tagLift = Math.max(-4, Math.min(4, Math.round(scoreProduct(p))));
-    const swipeLift = Math.max(-3, Math.min(5, Math.round(getSwipeScore(p, normalizeFeedInterestIds(userPrefs.interests), blockedTags) / 18)));
-
-    return displayMatchPercent({
-      ...p,
-      matchScore: Number(p.matchScore ?? 85) + tagLift + swipeLift,
-    });
   };
 
   const mainFeedPrioritization = {
@@ -2129,9 +2119,8 @@ const App: React.FC = () => {
                     onSelectAction={handleAction}
                     onTap={() => handleSwipe("right")}
                   />
-                  <div className="mt-4 flex items-center gap-2 text-slate-400 text-[11px] font-extrabold uppercase tracking-[0.22em] bg-white px-4 py-2 rounded-full border border-slate-100 shadow-sm">
-                    <Sparkles className="w-3 h-3 text-[var(--seligo-accent)]" />
-                    Match: {matchPercent(products[currentIndex])}%
+                  <div className="mt-4 max-w-[280px] rounded-full border border-slate-100 bg-white px-4 py-3 text-center text-xs font-semibold leading-5 text-slate-500 shadow-sm">
+                    {onboardingCopy.browsingHint}
                   </div>
                 </div>
               </div>
