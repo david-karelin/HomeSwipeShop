@@ -1,14 +1,69 @@
 
+export type CanonicalCategory =
+  | "lighting"
+  | "wall-decor"
+  | "storage"
+  | "mirrors"
+  | "plants"
+  | "shelf-styling"
+  | "desk-setup"
+  | "cozy-bedroom";
+
+export type PrimaryType =
+  | "lamp"
+  | "sconce"
+  | "poster"
+  | "basket"
+  | "organizer"
+  | "shelf"
+  | "mirror"
+  | "pillow"
+  | "tray"
+  | "hook"
+  | "bin"
+  | "box"
+  | "plant"
+  | "decor";
+
+export type ProductDoc = {
+  displayName: string;
+  brand: string;
+  category: CanonicalCategory;
+  primaryType: PrimaryType;
+  tags: string[];
+  roomTags: string[];
+  styleTags: string[];
+  price: number;
+  imageUrl: string;
+  description: string;
+  merchant: string;
+  purchaseUrl: string;
+  asin?: string;
+  isCurated: boolean;
+  swipeEligible: boolean;
+  imageApproved: boolean;
+  active: boolean;
+};
+
 export interface Product {
   id: string;
   name: string;
+  displayName?: string;
   brand: string;
   price: number;
   description: string;
   category: string;
   imageUrl: string;
   tags: string[];
+  roomTags?: string[];
+  styleTags?: string[];
   matchScore?: number; // Calculated by the ML algorithm
+  primaryType?: string;
+  isCurated?: boolean;
+  swipeEligible?: boolean;
+  imageApproved?: boolean;
+  isLaunch?: boolean;
+  active?: boolean;
 
   // Affiliate checkout fields (optional)
   checkoutType?: "affiliate" | "stripe";

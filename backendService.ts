@@ -17,16 +17,27 @@ export const loadUserData = (): UserPreferences | null => {
 
 // --- Firestore: load products ---
 const toProduct = (docId: string, data: any): Product => {
+  const displayName = data.displayName ?? data.title ?? data.name ?? "Untitled";
+
   return {
     id: docId,
-    name: data.name ?? data.title ?? "Untitled",
+    name: displayName,
+    displayName,
     brand: data.brand ?? "Unknown",
     price: typeof data.price === "number" ? data.price : Number(data.price ?? 0),
     description: data.description ?? "",
     category: data.category ?? "Other",
     imageUrl: data.imageUrl ?? data.imageURL ?? "",
     tags: Array.isArray(data.tags) ? data.tags : [],
+    roomTags: Array.isArray(data.roomTags) ? data.roomTags : [],
+    styleTags: Array.isArray(data.styleTags) ? data.styleTags : [],
     matchScore: typeof data.matchScore === "number" ? data.matchScore : 85,
+    primaryType: typeof data.primaryType === "string" ? data.primaryType : undefined,
+    isCurated: typeof data.isCurated === "boolean" ? data.isCurated : undefined,
+    swipeEligible: typeof data.swipeEligible === "boolean" ? data.swipeEligible : undefined,
+    imageApproved: typeof data.imageApproved === "boolean" ? data.imageApproved : undefined,
+    isLaunch: typeof data.isLaunch === "boolean" ? data.isLaunch : undefined,
+    active: typeof data.active === "boolean" ? data.active : undefined,
   };
 };
 

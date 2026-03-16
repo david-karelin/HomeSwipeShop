@@ -6,6 +6,9 @@ import SwipeCard from './components/SwipeCard';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
 import AdminScreen from './src/components/AdminScreen';
 import HowItWorksModal from './src/components/HowItWorksModal';
+import InterestsPage from './src/pages/InterestsPage';
+import { VIBE_CATEGORIES, normalizeInterestIds } from './src/constants';
+import { displayMatchPercent, getSwipeScore, prepareSwipeFeed, prioritizeMainFeedInventory } from './src/lib/feed';
 import RoomScanPage from './src/pages/RoomScanPage';
 import type { UTM } from './src/lib/utm';
 import type { RoomScanAnalysis } from './src/services/localRoomScan';
@@ -33,19 +36,6 @@ import {
   Activity,
   Scan
 } from 'lucide-react';
-
-const MOCK_INTERESTS = [
- { id: "rugs",          label: "Rugs",          icon: "🧶" },
-  { id: "lighting",      label: "Lighting",      icon: "💡" },
-  { id: "wall_art",      label: "Wall Art",      icon: "🖼️" },
-  { id: "seating",       label: "Seating",       icon: "🪑" },
-  { id: "tables",        label: "Tables",        icon: "🛋️" },
-  { id: "bedding",       label: "Bedding",       icon: "🛏️" },
-  { id: "storage",       label: "Storage",       icon: "🧺" },
-  { id: "mirrors",       label: "Mirrors",       icon: "🪞" },
-  { id: "plants",        label: "Plants",        icon: "🪴" },
-  { id: "kitchen_decor", label: "Kitchen Decor", icon: "🍽️" },
-];
 
 const INITIAL_PERSONA: UserPersona = {
   styleKeywords: [],
@@ -170,9 +160,16 @@ const ROOM_TAGS = new Set([
   "entryway", "living_room", "bedroom", "kitchen"
 ]);
 
-const INTEREST_IDS = new Set([
-  "rugs", "lighting", "wall_art", "seating", "tables", "bedding", "storage", "mirrors", "plants", "kitchen_decor"
-]);
+const INTEREST_IDS = new Set(VIBE_CATEGORIES.map((category) => category.id));
+
+const normalizeFeedInterestIds = (interestIds: string[]) =>
+  normalizeInterestIds(interestIds).filter((interestId): interestId is string => INTEREST_IDS.has(interestId));
+
+const mapVibeCategoriesToInterests = (selectedIds: string[]) =>
+  normalizeFeedInterestIds(selectedIds).slice(0, 10);
+
+const deriveSelectedVibeCategories = (interestIds: string[]) =>
+  normalizeFeedInterestIds(interestIds);
 
 const isVibeTag = (t: string) => VIBE_TAGS.has(t);
 const isRoomTag = (t: string) => ROOM_TAGS.has(t);
@@ -373,6 +370,7 @@ const App: React.FC = () => {
     new URLSearchParams(window.location.search).get("open") === "roomscan";
   const [view, setView] = useState<AppState>("auth");
   const [userPrefs, setUserPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -387,7 +385,7 @@ const App: React.FC = () => {
   const [leadEmail, setLeadEmail] = useState("");
   const [leadStatus, setLeadStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [leadError, setLeadError] = useState<string>("");
-  const [howOpen, setHowOpen] = useState(false);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [tagScores, setTagScores] = useState<TagScores>(() => loadTagScores());
   const [activityLog, setActivityLog] = useState<LocalActivity[]>(() => loadActivity());
   const [blockedTags, setBlockedTags] = useState<string[]>(() => loadBlockedTags());
@@ -433,7 +431,45 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
-    if (sp.get("open") === "roomscan") setView("roomscan");
+    const nextView = sp.get("view");
+    const openWhat = sp.get("open");
+    const sid = sp.get("sid") || null;
+
+    const cameFromEmail =
+      (sp.get("utm_source") || "").toLowerCase() === "email" &&
+      (sp.get("utm_medium") || "").toLowerCase() === "lead";
+
+    if (openWhat === "roomscan") {
+      setView("roomscan");
+    }
+
+    if (nextView === "cart") {
+      setView("cart");
+
+      if (openWhat === "checkout") {
+        setLeadEmail("");
+        setLeadError("");
+        setLeadStatus("idle");
+        setShowCheckout(true);
+
+        if (cameFromEmail) {
+          const key = `seligo_email_open_checkout_${sid ?? "nosid"}`;
+          if (!sessionStorage.getItem(key)) {
+            sessionStorage.setItem(key, "1");
+            void Firestore.logEvent({
+              type: "view_change",
+              view: "checkout",
+              source: "email",
+              meta: {
+                panel: "email_return_open_checkout",
+                sid,
+                sidMissing: sid ? 0 : 1,
+              },
+            }).catch(console.warn);
+          }
+        }
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -569,6 +605,11 @@ const App: React.FC = () => {
     setCurrentIndex((i) => Math.max(i - 1, 0));
 
     swipedRef.current.delete(last.product.id);
+    setAllProducts((prev) =>
+      prev.some((product) => product.id === last.product.id)
+        ? prev
+        : [last.product, ...prev]
+    );
 
     bumpTags(last.product, last.direction === "left" ? +1 : -2);
 
@@ -608,32 +649,99 @@ const App: React.FC = () => {
   };
 
   const matchPercent = (p: Product) => {
-    const s = scoreProduct(p);
+    const tagLift = Math.max(-4, Math.min(4, Math.round(scoreProduct(p))));
+    const swipeLift = Math.max(-3, Math.min(5, Math.round(getSwipeScore(p, normalizeFeedInterestIds(userPrefs.interests), blockedTags) / 18)));
 
-    let pct = 75 + s * 3;
+    return displayMatchPercent({
+      ...p,
+      matchScore: Number(p.matchScore ?? 85) + tagLift + swipeLift,
+    });
+  };
 
-    pct = Math.max(60, Math.min(99, pct));
+  const mainFeedPrioritization = {
+    leadWindow: 20,
+    maxPerSubtype: 2,
+    maxPerNameStem: 1,
+    maxPerCategorySubtype: 2,
+  } as const;
 
-    return Math.round(pct);
+  const smallCuratedPoolThreshold = 18;
+
+  const isApprovedCuratedProduct = (product: Product) =>
+    (product.isCurated || product.isLaunch) &&
+    product.active !== false &&
+    product.swipeEligible !== false &&
+    product.imageApproved === true;
+
+  const logDiscoveryStage = (...args: unknown[]) => {
+    if (!import.meta.env.DEV) return;
+    console.log("[Discovery]", ...args);
+  };
+
+  const rankAndDiversifyFeed = (
+    source: Product[],
+    interests: string[] = userPrefs.interests,
+  ) => {
+    const ranked = prepareSwipeFeed(
+      source,
+      normalizeFeedInterestIds(interests),
+      blockedTags
+    );
+
+    const curatedApprovedCount = ranked.filter(isApprovedCuratedProduct).length;
+
+    if (curatedApprovedCount > 0 && curatedApprovedCount < smallCuratedPoolThreshold) {
+      return ranked;
+    }
+
+    return prioritizeMainFeedInventory(ranked, mainFeedPrioritization);
+  };
+
+  const curateFeedProducts = (
+    source: Product[],
+    interests: string[] = userPrefs.interests,
+  ) => {
+    const visible = source.filter((product) => {
+      if (isBlockedProduct(product)) return false;
+      if (swipedRef.current.has(product.id)) return false;
+      return true;
+    });
+
+    return rankAndDiversifyFeed(visible, interests);
   };
 
   // Persistent Hydration
   useEffect(() => {
     const saved = Backend.loadUserData();
     if (saved) {
-      setUserPrefs(saved);
-      setProducts(saved.currentFeed || []);
-      setCurrentIndex(saved.feedIndex || 0);
+      const normalizedSavedInterests = normalizeFeedInterestIds(saved.interests || []);
+      setUserPrefs({
+        ...saved,
+        interests: normalizedSavedInterests,
+      });
+      const savedFeed = saved.currentFeed || [];
+      const curatedFeed = rankAndDiversifyFeed(savedFeed, normalizedSavedInterests);
+
+      setAllProducts(savedFeed);
+      setProducts(curatedFeed);
+      setCurrentIndex(Math.min(saved.feedIndex || 0, Math.max(curatedFeed.length - 1, 0)));
 
       if (adminEnabled || openRoomscanEnabled) return;
       
       if (saved.currentFeed && saved.currentFeed.length > 0) {
         setView('browsing');
-      } else if (saved.interests.length > 0) {
+      } else if (normalizedSavedInterests.length > 0) {
         setView('interests');
       }
     }
   }, [adminEnabled, openRoomscanEnabled]);
+
+  useEffect(() => {
+    if (!allProducts.length) return;
+
+    setProducts(curateFeedProducts(allProducts));
+    setCurrentIndex(0);
+  }, [blockedTags, userPrefs.interests]);
 
   useEffect(() => {
     setSelectedProduct(null);
@@ -690,8 +798,6 @@ const App: React.FC = () => {
     }));
   }, [tagScores]);
 
-  const handleLogin = () => setView('interests');
-
   const handleResetData = async () => {
     if (!confirm("Are you sure? This will clear your style persona and all saved items.")) return;
 
@@ -710,6 +816,7 @@ const App: React.FC = () => {
     localStorage.removeItem("swipeshop_data");
     localStorage.removeItem("tagScores");
     setUserPrefs(DEFAULT_PREFS);
+    setAllProducts([]);
     resetImpressions();
     setProducts([]);
     setCurrentIndex(0);
@@ -718,68 +825,238 @@ const App: React.FC = () => {
     setView("interests");
   };
 
-  const handleToggleInterest = (id: string) => {
-    setUserPrefs(prev => ({
-      ...prev,
-      interests: prev.interests.includes(id) 
-        ? prev.interests.filter(i => i !== id) 
-        : [...prev.interests, id]
-    }));
-  };
-
   type StartDiscoveryOpts = { navigate?: boolean };
 
   const startDiscovery = async (
     overrideInterests?: string[],
     opts: StartDiscoveryOpts = {}
   ): Promise<Product[]> => {
-    const interests = [...(overrideInterests ?? userPrefs.interests)];
+    const interests = normalizeFeedInterestIds([...(overrideInterests ?? userPrefs.interests)]);
     if (interests.length === 0) return [];
 
     setIsLoading(true);
     if (opts.navigate !== false) setView("discovering");
     try {
+      console.log("selectedIds snapshot", JSON.stringify(interests));
+      logDiscoveryStage("selectedIds", interests);
       resetImpressions();
+      setAllProducts([]);
       setProducts([]);
       setCursor(null);
       setHasMore(true);
       setCurrentIndex(0);
 
       const swipes = await Firestore.fetchMySwipes();
-      swipedRef.current = new Set(swipes.map((s: any) => s.productId ?? s.id));
+      console.log("raw swipes", swipes.slice(0, 10));
+      swipedRef.current = new Set(
+        swipes
+          .filter((s: any) =>
+            s.direction === "left" ||
+            s.action === "pass" ||
+            s.type === "pass" ||
+            s.hidden === true ||
+            s.blocked === true
+          )
+          .map((s: any) => s.productId)
+          .filter(Boolean)
+      );
+      logDiscoveryStage("loaded swipes", {
+        fetchedSwipeRecords: swipes.length,
+        appliedSwipeExclusions: swipedRef.current.size,
+        bypassSwipeExclusion: false,
+      });
 
       let nextCursor: any = null;
       let more = true;
       let safety = 0;
       const out: Product[] = [];
+      const fetchedRaw: Product[] = [];
+      const seen = new Set<string>();
+      const minimumCuratedFeedSize = 24;
+      let filteredBySwiped = 0;
+      let filteredByBlocked = 0;
 
-      while (more && out.length < 80 && safety < 8) {
-        const page = await Firestore.fetchProductsByInterestsPage(interests, 30, nextCursor);
+      const curatedPool = await Firestore.fetchCuratedProductsByInterests(interests, 60);
+      fetchedRaw.push(...curatedPool);
+      console.log("curated raw length", curatedPool.length);
+      logDiscoveryStage("fetched curated raw", curatedPool.length, [...curatedPool]);
+      console.log("curated ids snapshot", curatedPool.map((product) => product.id));
 
-        nextCursor = page.cursor;
-        more = page.hasMore;
-
-        for (const p of page.items) {
-          if (!swipedRef.current.has(p.id) && !isBlockedProduct(p)) out.push(p);
-          if (out.length >= 80) break;
+      for (const product of curatedPool) {
+        if (seen.has(product.id)) continue;
+        if (swipedRef.current.has(product.id)) {
+          filteredBySwiped += 1;
+          continue;
+        }
+        if (isBlockedProduct(product)) {
+          filteredByBlocked += 1;
+          continue;
         }
 
-        if (!page.items?.length) break;
-        safety++;
+        out.push(product);
+        seen.add(product.id);
+
+        if (out.length >= 80) break;
       }
 
-      const ranked = [...out].sort((a, b) => {
-        const scoreA = (a.asin ? 100000 : 0) + scoreProduct(a);
-        const scoreB = (b.asin ? 100000 : 0) + scoreProduct(b);
-        return scoreB - scoreA;
+      const normalizedCuratedCount = out.filter(isApprovedCuratedProduct).length;
+      console.log("curated normalized length", normalizedCuratedCount);
+      logDiscoveryStage("curated normalized length", normalizedCuratedCount);
+      logDiscoveryStage("after curated blocked/swiped filter", out.length, [...out]);
+
+      const curatedOnly = rankAndDiversifyFeed(out, interests);
+      const needsFallback = curatedOnly.length < minimumCuratedFeedSize;
+      logDiscoveryStage("curated feed result", curatedOnly.length, [...curatedOnly]);
+
+      if (needsFallback) {
+        while (more && out.length < 80 && safety < 8) {
+          const page = await Firestore.fetchProductsByInterestsPage(interests, 30, nextCursor);
+          const pageItems = page.items ?? [];
+
+          nextCursor = page.cursor;
+          more = page.hasMore;
+          fetchedRaw.push(...pageItems);
+          logDiscoveryStage("fetched fallback page raw", pageItems.length, [...pageItems]);
+          console.log("fallback ids snapshot", pageItems.map((product) => product.id));
+          if (pageItems[0]) {
+            console.log(
+              "fallback first product snapshot",
+              JSON.stringify(
+                {
+                  id: pageItems[0].id,
+                  category: pageItems[0].category,
+                  primaryType: pageItems[0].primaryType,
+                  tags: pageItems[0].tags,
+                  roomTags: pageItems[0].roomTags,
+                  styleTags: pageItems[0].styleTags,
+                  isCurated: pageItems[0].isCurated,
+                  active: pageItems[0].active,
+                  swipeEligible: pageItems[0].swipeEligible,
+                  imageApproved: pageItems[0].imageApproved,
+                },
+                null,
+                2
+              )
+            );
+          }
+
+          for (const p of pageItems) {
+            if (p.isCurated) continue;
+            if (seen.has(p.id)) continue;
+            if (swipedRef.current.has(p.id)) {
+              filteredBySwiped += 1;
+              continue;
+            }
+            if (isBlockedProduct(p)) {
+              filteredByBlocked += 1;
+              continue;
+            }
+
+            out.push(p);
+            seen.add(p.id);
+            if (out.length >= 80) break;
+          }
+
+          if (!pageItems.length) break;
+          safety++;
+        }
+
+        if (out.length < minimumCuratedFeedSize) {
+          const broaderFallback = await Firestore.fetchProductsByInterests(interests, 120);
+          fetchedRaw.push(...broaderFallback);
+          logDiscoveryStage("fetched broader interest fallback", broaderFallback.length, [...broaderFallback]);
+          console.log("broader fallback ids snapshot", broaderFallback.map((product) => product.id));
+          if (broaderFallback[0]) {
+            console.log(
+              "broaderFallback first product snapshot",
+              JSON.stringify(
+                {
+                  id: broaderFallback[0].id,
+                  category: broaderFallback[0].category,
+                  primaryType: broaderFallback[0].primaryType,
+                  tags: broaderFallback[0].tags,
+                  roomTags: broaderFallback[0].roomTags,
+                  styleTags: broaderFallback[0].styleTags,
+                  isCurated: broaderFallback[0].isCurated,
+                  active: broaderFallback[0].active,
+                  swipeEligible: broaderFallback[0].swipeEligible,
+                  imageApproved: broaderFallback[0].imageApproved,
+                },
+                null,
+                2
+              )
+            );
+          }
+
+          for (const product of broaderFallback) {
+            if (seen.has(product.id)) continue;
+            if (swipedRef.current.has(product.id)) {
+              filteredBySwiped += 1;
+              continue;
+            }
+            if (isBlockedProduct(product)) {
+              filteredByBlocked += 1;
+              continue;
+            }
+
+            out.push(product);
+            seen.add(product.id);
+
+            if (out.length >= 80) break;
+          }
+        }
+      }
+
+      logDiscoveryStage("after blocked/swiped filter", out.length, {
+        products: [...out],
+        filteredBySwiped,
+        filteredByBlocked,
+        blockedTags,
       });
 
-      setProducts(ranked);
+      const ranked = prepareSwipeFeed(out, interests, blockedTags);
+      const rankedCuratedCount = ranked.filter(isApprovedCuratedProduct).length;
+      console.log("ranked curated count", rankedCuratedCount);
+      logDiscoveryStage("ranked curated count", rankedCuratedCount);
+      logDiscoveryStage("after ranking", ranked.length, [...ranked]);
+
+      const diversified = prioritizeMainFeedInventory(ranked, mainFeedPrioritization);
+      logDiscoveryStage("after diversify", diversified.length, [...diversified]);
+
+      const finalFeed = diversified;
+      const approvedCurated = finalFeed.filter(isApprovedCuratedProduct);
+
+      console.log("curated final length", finalFeed.length);
+      console.log("approved curated total", approvedCurated.length);
+      console.log(
+        approvedCurated.map((product) => ({
+          asin: product.asin,
+          name: product.displayName ?? product.name,
+          category: product.category,
+        }))
+      );
+
+      if (finalFeed.length === 0) {
+        console.warn("[Discovery] Feed resolved to zero products", {
+          interests,
+          fetchedRaw: fetchedRaw.length,
+          filteredBySwiped,
+          filteredByBlocked,
+          blockedTags,
+          swipedCount: swipedRef.current.size,
+          bypassSwipeExclusion: false,
+          bypassFinalPrioritization: false,
+        });
+      }
+
+      setAllProducts(out);
+      setProducts(finalFeed);
       setCursor(nextCursor);
-      setHasMore(more);
+      setHasMore(needsFallback ? more : true);
+      setCurrentIndex(0);
 
       if (opts.navigate !== false) setView("browsing");
-      return ranked;
+      return finalFeed;
     } catch (e) {
       console.error("Firestore load failed:", e);
       if (opts.navigate !== false) setView("interests");
@@ -815,6 +1092,7 @@ const App: React.FC = () => {
 
       bumpTags(currentProduct, -1);
       swipedRef.current.add(currentProduct.id);
+      setAllProducts(prev => prev.filter((product) => product.id !== currentProduct.id));
       pushUndo({ product: currentProduct, direction: "left", action: null });
       logLocalActivity("pass");
       setCurrentIndex(i => i + 1);
@@ -905,6 +1183,7 @@ const App: React.FC = () => {
     }
     bumpTags(currentProduct, +2);
     swipedRef.current.add(currentProduct.id);
+    setAllProducts(prev => prev.filter((product) => product.id !== currentProduct.id));
 
     const newLiked = [...userPrefs.likedProducts, currentProduct];
 
@@ -1231,17 +1510,16 @@ const App: React.FC = () => {
   const fetchMoreProducts = async ({ interests, limit, cursor, ignoreSwiped = false }: FetchOpts) => {
     const page = await Firestore.fetchProductsByInterestsPage(interests, limit, cursor);
 
-    const ranked = [...(page.items || [])].sort(
-      (a, b) => Number(!!b.asin) - Number(!!a.asin) || scoreProduct(b) - scoreProduct(a)
-    );
-
-    const filtered = ranked.filter((p) => {
+    const filtered = (page.items || []).filter((p) => {
+      if (p.isCurated) return false;
       if (isBlockedProduct(p)) return false;
       if (!ignoreSwiped && swipedRef.current.has(p.id)) return false;
       return true;
     });
 
-    return { page, filtered };
+    const curated = rankAndDiversifyFeed(filtered, interests);
+
+    return { page, curated, filtered };
   };
 
   const applyRoomScan = async (analysis: RoomScanAnalysis) => {
@@ -1251,26 +1529,30 @@ const App: React.FC = () => {
     roomScanImpressedRef.current = new Set();
 
     const alias: Record<string, string> = {
-      add_rug: "rugs",
+      add_rug: "",
       add_plants: "plants",
-      wall_art: "wall_art",
-      livingroom: "seating",
-      living_room: "seating",
-      bedroom: "bedding",
-      kitchen: "kitchen_decor",
-      decor: "wall_art",
-      wall: "wall_art",
-      art: "wall_art",
+      wall_art: "wall-decor",
+      livingroom: "",
+      living_room: "",
+      bedroom: "cozy-bedroom",
+      kitchen: "",
+      decor: "wall-decor",
+      wall: "wall-decor",
+      art: "wall-decor",
       lights: "lighting",
       lamp: "lighting",
       lamps: "lighting",
-      table: "tables",
-      chair: "seating",
-      sofa: "seating",
+      table: "desk-setup",
+      desk: "desk-setup",
+      workspace: "desk-setup",
+      chair: "",
+      sofa: "",
       plant: "plants",
-      rug: "rugs",
+      rug: "",
       mirror: "mirrors",
       organization: "storage",
+      shelf: "shelf-styling",
+      shelves: "shelf-styling",
     };
 
     const toInterestId = (raw: string) => {
@@ -1323,7 +1605,7 @@ const App: React.FC = () => {
 
     let mergedInterests: string[] = [];
     setUserPrefs((prev) => {
-      mergedInterests = Array.from(new Set([...(prev.interests || []), ...scanInterests])).slice(0, 10);
+      mergedInterests = normalizeFeedInterestIds([...(prev.interests || []), ...scanInterests]).slice(0, 10);
 
       return {
         ...prev,
@@ -1337,7 +1619,7 @@ const App: React.FC = () => {
       };
     });
 
-    const interestsToUse = mergedInterests.length ? mergedInterests : userPrefs.interests;
+    const interestsToUse = mergedInterests.length ? mergedInterests : normalizeFeedInterestIds(userPrefs.interests);
 
     const fetchCandidatesIgnoringSwipes = async (interests: string[], limit = 120) => {
       let nextCursor: any = null;
@@ -1563,16 +1845,22 @@ const App: React.FC = () => {
     refineLockRef.current = true;
     setIsAlgorithmRunning(true);
     try {
-      const { page, filtered } = await fetchMoreProducts({
+      const { page, curated, filtered } = await fetchMoreProducts({
         interests: userPrefs.interests,
         limit: 20,
         cursor,
         ignoreSwiped: false,
       });
 
-      setProducts(prev => {
+      setAllProducts(prev => {
         const seen = new Set(prev.map(p => p.id));
         const unique = filtered.filter(p => !seen.has(p.id));
+        return [...prev, ...unique];
+      });
+
+      setProducts(prev => {
+        const seen = new Set(prev.map(p => p.id));
+        const unique = curated.filter(p => !seen.has(p.id));
         return [...prev, ...unique];
       });
 
@@ -1658,61 +1946,30 @@ const App: React.FC = () => {
     "Connecting to Product Catalog...",
     "Finalizing Personalized Feed..."
   ];
-  const overlayOpen = !!selectedProduct || showCheckout || howOpen;
+  const overlayOpen = !!selectedProduct || showCheckout || showHowItWorks;
 
   // Views
-  if (view === 'auth') {
+  if (view === 'auth' || view === 'interests') {
     return (
-      <div className="min-h-[100dvh] bg-[var(--seligo-primary)] flex flex-col items-center justify-center p-6 text-white">
-        <div className="mb-12 text-center animate-in fade-in zoom-in duration-500">
-          <img
-            src={seligoLogo}
-            alt="Seligo.AI"
-            className="w-24 h-24 rounded-[2rem] object-cover shadow-2xl mx-auto mb-6"
-          />
-          <h1 className="text-5xl font-black mb-2 tracking-tighter">Seligo.AI</h1>
-          <p className="text-white font-medium opacity-80 text-lg italic">AI-powered home discovery</p>
-        </div>
-        <div className="w-full max-sm:px-4 space-y-4">
-          <button onClick={handleLogin} className="w-full py-5 bg-white text-[var(--seligo-primary)] rounded-3xl font-black text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl">Get Started</button>
-        </div>
-      </div>
-    );
-  }
+      <>
+        <InterestsPage
+          initialSelectedIds={deriveSelectedVibeCategories(userPrefs.interests)}
+          isLoading={isLoading}
+          onHowItWorks={() => setShowHowItWorks(true)}
+          onRoomScan={() => goView("roomscan", "interests_roomscan_cta")}
+          onContinue={async (selectedIds) => {
+            const nextInterests = mapVibeCategoriesToInterests(selectedIds);
+            setUserPrefs((prev) => ({
+              ...prev,
+              interests: nextInterests,
+            }));
+            setShowHowItWorks(false);
+            await startDiscovery(nextInterests);
+          }}
+        />
 
-  if (view === 'interests') {
-    return (
-      <div className="min-h-[100dvh] bg-slate-50 p-6 flex flex-col">
-        <header className="mb-8">
-          <h1 className="text-3xl font-black text-slate-900 mb-2">Feed the Algorithm</h1>
-          <p className="text-slate-500">The ML engine uses your initial choices to build your base persona.</p>
-        </header>
-        <div className="grid grid-cols-2 gap-4 flex-grow content-start no-scrollbar overflow-y-auto pb-4">
-          {MOCK_INTERESTS.map((interest) => (
-            <button
-              key={interest.id}
-              onClick={() => handleToggleInterest(interest.id)}
-              className={`p-6 rounded-[2rem] border-2 transition-all flex flex-col items-center text-center space-y-3 ${
-                userPrefs.interests.includes(interest.id)
-                  ? 'border-[var(--seligo-primary)] bg-white text-[var(--seligo-primary)] shadow-lg'
-                  : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
-              }`}
-            >
-              <span className="text-4xl">{interest.icon}</span>
-              <span className="font-bold text-sm uppercase tracking-tight">{interest.label}</span>
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => startDiscovery()}
-          disabled={userPrefs.interests.length < 1 || isLoading}
-          className={`mt-4 w-full py-5 rounded-[2rem] font-bold text-lg flex items-center justify-center gap-3 transition-all ${
-            userPrefs.interests.length >= 1 ? 'bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white shadow-2xl' : 'bg-slate-200 text-slate-400'
-          }`}
-        >
-          {isLoading ? <Loader2 className="animate-spin" /> : <>Generate My Feed <Zap className="w-5 h-5" /></>}
-        </button>
-      </div>
+        <HowItWorksModal open={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
+      </>
     );
   }
 
@@ -1833,14 +2090,14 @@ const App: React.FC = () => {
 
                 <div className="pt-12 grid grid-cols-2 gap-3 max-w-xs mx-auto">
                   {userPrefs.interests.map((interestId, idx) => {
-                    const interest = MOCK_INTERESTS.find(i => i.id === interestId);
+                    const interestLabel = prettyLabel(interestId);
                     return (
                       <div
                         key={interestId}
                         className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 animate-in fade-in slide-in-from-bottom duration-500"
                         style={{ animationDelay: `${idx * 200}ms` }}
                       >
-                        <Activity className="w-3 h-3 text-[var(--seligo-accent)]" /> {interest?.label}
+                        <Activity className="w-3 h-3 text-[var(--seligo-accent)]" /> {interestLabel}
                       </div>
                     );
                   })}
@@ -2058,7 +2315,7 @@ const App: React.FC = () => {
         {view === 'profile' && (
           <Screen className="bg-white">
             <PageHeader
-              title="Insights"
+              title="Style"
               subtitle="Your Seligo.AI style profile"
               onClose={() => setView("browsing")}
             />
@@ -2254,7 +2511,7 @@ const App: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setHowOpen(true)}
+                onClick={() => setShowHowItWorks(true)}
                 className="w-full py-4 rounded-2xl bg-slate-100 text-slate-900 font-black mt-3"
               >
                 How it works
@@ -2470,7 +2727,8 @@ const App: React.FC = () => {
         setLeadSource={setLeadSourceTracked}
       />
 
-      <HowItWorksModal open={howOpen} onClose={() => setHowOpen(false)} />
+
+  <HowItWorksModal open={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
 
       {!showCheckout && !selectedProduct && (
         <nav
@@ -2487,7 +2745,7 @@ const App: React.FC = () => {
 
             <NavItem
               active={view === "profile"}
-              label="Insights"
+              label="Style"
               onClick={() => goView("profile")}
               icon={<BrainCircuit className="w-6 h-6" />}
             />

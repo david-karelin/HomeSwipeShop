@@ -1,66 +1,116 @@
-import React from "react";
+import { useEffect } from "react";
+import {
+  FEATURE_CARDS,
+  HOW_IT_WORKS_STEPS,
+  HERO_COPY,
+} from "../constants";
 
-type Props = { open: boolean; onClose: () => void };
+export default function HowItWorksModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
 
-export default function HowItWorksModal({ open, onClose }: Props) {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className="fixed inset-0 z-50 bg-black/45"
+      onClick={onClose}
+      aria-modal="true"
+      role="dialog"
     >
-      <div className="w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col rounded-2xl bg-white shadow-2xl">
-        <div className="shrink-0 p-4 border-b border-slate-100 flex items-start justify-between gap-4">
-          <div>
-            <div className="text-2xl font-black text-slate-900">How Seligo.AI works</div>
-            <div className="text-slate-500 text-sm mt-1">A quick 30-second overview.</div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
+      <div className="absolute inset-x-0 bottom-0 flex justify-center p-3 sm:p-4">
+        <div
+          className="w-full max-w-md max-h-[88vh] overflow-y-auto rounded-[28px] bg-white shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="sticky top-0 z-10 rounded-t-[28px] bg-white px-5 pt-3 pb-2">
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4 text-slate-700">
-          <div className="rounded-2xl border border-slate-100 p-4">
-            <div className="font-black text-slate-900">1) Swipe to discover</div>
-            <div className="text-sm text-slate-600 mt-1">
-              Swipe left to pass. Swipe right to save matches. Over time, your feed adapts to what you like.
+            <div className="flex items-start justify-between gap-3">
+              <div className="pr-2">
+                <h2 className="text-2xl font-black tracking-tight text-slate-900">
+                  {HERO_COPY.title}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {HERO_COPY.subtitle}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-600"
+              >
+                Close
+              </button>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-100 p-4">
-            <div className="font-black text-slate-900">2) Personalization</div>
-            <div className="text-sm text-slate-600 mt-1">
-              We use your likes/passes to rank future items. Your “Insights” vibe updates as you interact.
+          <div className="px-5 pb-5">
+            <div className="mt-3 space-y-3">
+              {FEATURE_CARDS.map((card) => (
+                <div
+                  key={card.title}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="text-2xl">{card.emoji}</div>
+                  <div className="mt-2 text-base font-black text-slate-900">
+                    {card.title}
+                  </div>
+                  <div className="mt-1 text-sm leading-6 text-slate-600">
+                    {card.description}
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div className="rounded-2xl border border-slate-100 p-4">
-            <div className="font-black text-slate-900">3) Checkout links</div>
-            <div className="text-sm text-slate-600 mt-1">
-              For now, “Open” launches affiliate product pages (real in-app checkout is coming later).
+            <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                How it works
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {HOW_IT_WORKS_STEPS.map((step, i) => (
+                  <div key={step} className="flex gap-3">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-black text-white">
+                      {i + 1}
+                    </div>
+                    <div className="text-sm leading-6 text-slate-700">
+                      {step}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="text-[12px] text-slate-500 leading-snug">
-            Disclosure: some links may be affiliate links. We may earn a commission at no extra cost to you.
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-5 h-12 w-full rounded-2xl bg-[var(--seligo-cta)] text-sm font-black text-white shadow-sm active:scale-[0.99] transition"
+            >
+              Start Swiping
+            </button>
           </div>
-        </div>
-
-        <div className="shrink-0 p-4 border-t border-slate-100">
-          <button
-            onClick={onClose}
-            className="w-full py-4 rounded-2xl bg-slate-900 text-white font-black hover:bg-slate-800 active:scale-95 transition"
-          >
-            Got it
-          </button>
         </div>
       </div>
     </div>

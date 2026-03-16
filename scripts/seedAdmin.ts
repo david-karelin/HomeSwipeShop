@@ -76,6 +76,7 @@ function makeProduct(i: number) {
 
   return {
     name,
+    displayName: name,
     title: name, // your normalizer accepts name OR title
     brand: "SwipeShop Studio",
     price: priceFor(category, i),
@@ -83,7 +84,14 @@ function makeProduct(i: number) {
     category,
     imageUrl: `https://picsum.photos/seed/${imageSeed}/600/600`,
     tags,
+    roomTags: [],
+    styleTags: [],
+    primaryType: "decor",
     matchScore: 70 + (i % 30),
+    isCurated: false,
+    swipeEligible: false,
+    imageApproved: false,
+    active: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }

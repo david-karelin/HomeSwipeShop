@@ -1,13 +1,19 @@
 [
   {
     "asin": "B000000000",
-    "name": "Example Product Name",
+    "displayName": "Rounded Accent Mirror",
     "brand": "Example Brand",
-    "category": "tables",
-    "price": 129.99,
+    "category": "mirrors",
+    "primaryType": "mirror",
+    "roomTags": ["bedroom", "wall"],
+    "styleTags": ["modern", "neutral"],
+    "price": 49.99,
     "imageUrl": "https://images.example.com/product.jpg",
-    "description": "Short 1-2 line product description.",
+    "description": "Curved wall mirror that makes a bedroom or entry corner feel finished without taking over the room.",
     "purchaseUrl": "https://www.amazon.ca/dp/B000000000/ref=nosim?tag=yourtag-20",
-    "tags": ["tables", "modern", "living_room"]
+    "tags": ["mirrors", "mirror", "wall-decor", "bedroom", "under-50"],
+    "launchBatch": "2026-03-v1",
+    "source": "launch-set",
+    "curationScore": 22
   }
 ]

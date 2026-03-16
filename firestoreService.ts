@@ -25,7 +25,8 @@ import {
   type User,
 } from "firebase/auth";
 import { auth, db } from "./firebase";
-import type { Product } from "./types";
+import { INTEREST_QUERY_TAGS, SWIPE_FEED_RULES, normalizeInterestIds } from "./src/constants";
+import type { CanonicalCategory, PrimaryType, Product } from "./types";
 
 export { db, auth };
 
@@ -107,18 +108,444 @@ export function ensureUserReady(): Promise<User> {
   return readyPromise;
 }
 
+function normalizeTerm(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalizeTag(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, "and")
+    .replace(/[’']/g, "")
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function canonicalizeTagList(values: unknown) {
+  if (!Array.isArray(values)) return [];
+
+  return Array.from(new Set(values.map((value) => canonicalizeTag(value)).filter(Boolean)));
+}
+
+function withLegacyTagVariants(tags: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of tags) {
+    const canonical = canonicalizeTag(raw);
+    const spaced = canonical.replace(/-/g, " ");
+
+    for (const value of [canonical, spaced]) {
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+  }
+
+  return out;
+}
+
+const ALLOWED_CATEGORIES: CanonicalCategory[] = [
+  "lighting",
+  "wall-decor",
+  "storage",
+  "mirrors",
+  "plants",
+  "shelf-styling",
+  "desk-setup",
+  "cozy-bedroom",
+];
+
+const CATEGORY_MAP: Record<string, CanonicalCategory> = {
+  lighting: "lighting",
+  lights: "lighting",
+  lamp: "lighting",
+
+  mirrors: "mirrors",
+  mirror: "mirrors",
+
+  storage: "storage",
+  organizer: "storage",
+  organizers: "storage",
+
+  shelf: "shelf-styling",
+  shelves: "shelf-styling",
+  "shelf-styling": "shelf-styling",
+
+  plants: "plants",
+  plant: "plants",
+
+  bedding: "cozy-bedroom",
+  bedroom: "cozy-bedroom",
+  pillows: "cozy-bedroom",
+  pillow: "cozy-bedroom",
+
+  "wall decor": "wall-decor",
+  "wall-decor": "wall-decor",
+  art: "wall-decor",
+  poster: "wall-decor",
+
+  desk: "desk-setup",
+  workspace: "desk-setup",
+};
+
+function inferCanonicalCategory(blob: string, primaryType: PrimaryType, rawCategory: string): CanonicalCategory {
+  const normalizedCategory = normalizeTerm(rawCategory);
+  if (CATEGORY_MAP[normalizedCategory]) return CATEGORY_MAP[normalizedCategory];
+  if ((ALLOWED_CATEGORIES as string[]).includes(normalizedCategory)) return normalizedCategory as CanonicalCategory;
+
+  if (primaryType === "lamp" || primaryType === "sconce" || blob.includes(" sconce ") || blob.includes(" lighting ") || blob.includes(" light ")) return "lighting";
+  if (primaryType === "mirror" || blob.includes(" mirror ")) return "mirrors";
+  if (primaryType === "poster" || blob.includes(" wall art ") || blob.includes(" poster ") || blob.includes(" print ") || blob.includes(" canvas ")) {
+    return "wall-decor";
+  }
+  if (["basket", "organizer", "tray", "hook", "bin", "box"].includes(primaryType) || blob.includes(" storage ")) {
+    return "storage";
+  }
+  if (primaryType === "shelf" || blob.includes(" shelf ") || blob.includes(" ledge ") || blob.includes(" bookend ")) {
+    return "shelf-styling";
+  }
+  if (primaryType === "plant" || blob.includes(" plant ") || blob.includes(" planter ") || blob.includes(" greenery ")) return "plants";
+  if (primaryType === "pillow" || blob.includes(" pillow ") || blob.includes(" blanket ") || blob.includes(" throw ") || blob.includes(" bedroom ") || blob.includes(" nightstand ")) {
+    return "cozy-bedroom";
+  }
+  if (blob.includes(" desk ") || blob.includes(" workspace ") || blob.includes(" pegboard ") || blob.includes(" monitor ")) return "desk-setup";
+
+  return "storage";
+}
+
+function inferRoomTags(primaryType: PrimaryType, tags: string[]) {
+  const out = [...tags];
+  if (primaryType === "lamp") out.push("bedroom", "desk");
+  if (primaryType === "sconce") out.push("wall", "bedroom");
+  if (primaryType === "poster") out.push("wall", "bedroom");
+  if (["basket", "organizer", "tray", "hook", "bin", "box"].includes(primaryType)) out.push("small-space", "desk");
+  if (primaryType === "mirror") out.push("bedroom", "wall");
+  if (primaryType === "shelf") out.push("wall", "small-space");
+  if (primaryType === "pillow") out.push("bedroom");
+  if (primaryType === "plant") out.push("bedroom", "desk");
+
+  return Array.from(
+    new Set(
+      out
+        .map((tag) => canonicalizeTag(tag))
+        .filter((tag) => ["bedroom", "desk", "wall", "small-space", "living-room", "entryway"].includes(tag))
+    )
+  );
+}
+
+function inferStyleTags(blob: string) {
+  const out = new Set<string>();
+
+  if (blob.includes(" cozy ") || blob.includes(" soft ")) out.add("cozy");
+  if (blob.includes(" minimal ") || blob.includes(" minimalist ")) out.add("minimal");
+  if (blob.includes(" modern ") || blob.includes(" sleek ")) out.add("modern");
+  if (blob.includes(" warm ")) out.add("warm");
+  if (blob.includes(" neutral ")) out.add("neutral");
+  if (blob.includes(" natural ") || blob.includes(" wood ") || blob.includes(" rattan ") || blob.includes(" linen ") || blob.includes(" jute ")) {
+    out.add("natural");
+  }
+
+  return Array.from(out);
+}
+
+function buildStructuredTags(
+  primaryType: PrimaryType,
+  category: CanonicalCategory,
+  price: number,
+  oldTags: string[]
+) {
+  const tags = [primaryType, category, ...oldTags];
+
+  if (price <= 30) tags.push("under-30", "budget");
+  if (price <= 50) tags.push("under-50");
+  if (price <= 80) tags.push("affordable");
+
+  if (["basket", "organizer", "tray", "hook", "bin", "box", "shelf"].includes(primaryType)) {
+    tags.push("small-space");
+  }
+
+  return Array.from(new Set(tags.map((tag) => canonicalizeTag(tag)).filter(Boolean)));
+}
+
+function isApprovedImageUrl(url: string) {
+  const lower = String(url || "").trim().toLowerCase();
+  return lower.startsWith("http") && !SWIPE_FEED_RULES.placeholderImageHosts.some((host) => lower.includes(host));
+}
+
+function isIndexFallbackError(error: unknown) {
+  return typeof error === "object" && error !== null && (error as { code?: string }).code === "failed-precondition";
+}
+
+function normalizeProductsFromDocs(docs: Array<{ id: string; data(): any }>) {
+  return docs
+    .map((docSnap) => normalizeProduct(docSnap.id, docSnap.data()))
+    .filter((product) => product.active !== false && product.swipeEligible !== false);
+}
+
+function normalizeApprovedProductsFromDocs(docs: Array<{ id: string; data(): any }>) {
+  return normalizeProductsFromDocs(docs).filter((product) => product.imageApproved === true);
+}
+
+function sliceInterestMatches(products: Product[], queryTags: string[], take: number) {
+  const matched = queryTags.length > 0
+    ? products.filter((product) => matchesInterestTags(product, queryTags))
+    : products;
+
+  return matched.slice(0, take);
+}
+
+async function fetchLooseInterestMatches(
+  queryTags: string[],
+  take: number,
+  opts: { curatedOnly?: boolean } = {}
+) {
+  const col = collection(db, "products");
+  const looseTake = Math.max(take * 4, 120);
+  const constrainedQuery = opts.curatedOnly
+    ? queryTags.length > 0
+      ? query(col, where("isCurated", "==", true), where("tags", "array-contains-any", queryTags), limit(looseTake))
+      : query(col, where("isCurated", "==", true), limit(looseTake))
+    : queryTags.length > 0
+      ? query(col, where("tags", "array-contains-any", queryTags), limit(looseTake))
+      : query(col, limit(looseTake));
+
+  const constrainedSnap = await getDocs(constrainedQuery);
+  const constrainedItems = sliceInterestMatches(normalizeApprovedProductsFromDocs(constrainedSnap.docs), queryTags, take);
+  if (constrainedItems.length > 0 || queryTags.length === 0) return constrainedItems;
+
+  const broadQuery = opts.curatedOnly
+    ? query(col, where("isCurated", "==", true), limit(looseTake))
+    : query(col, limit(looseTake));
+  const broadSnap = await getDocs(broadQuery);
+
+  return sliceInterestMatches(normalizeApprovedProductsFromDocs(broadSnap.docs), queryTags, take);
+}
+
+function inferSwipeEligible(
+  price: number,
+  primaryType: PrimaryType,
+  imageUrl: string,
+  active: boolean,
+  _blob: string
+) {
+  if (!active) return false;
+  if (!isApprovedImageUrl(imageUrl)) return false;
+  if (price <= 0 || price > 80) return false;
+  if (["shelf"].includes(primaryType) && price > 60) return false;
+  return true;
+}
+
+function inferPrimaryTypeFromBlob(blob: string) {
+  if (blob.includes(" basket ")) return "basket";
+  if (blob.includes(" organizer ")) return "organizer";
+  if (blob.includes(" tray ")) return "tray";
+  if (blob.includes(" shelf ")) return "shelf";
+  if (blob.includes(" hook ")) return "hook";
+  if (blob.includes(" bin ")) return "bin";
+  if (blob.includes(" box ")) return "box";
+  if (blob.includes(" mirror ")) return "mirror";
+  if (blob.includes(" sconce ")) return "sconce";
+  if (blob.includes(" lamp ") || blob.includes(" lighting ") || blob.includes(" light ")) return "lamp";
+  if (blob.includes(" poster ") || blob.includes(" print ") || blob.includes(" wall art ") || blob.includes(" canvas ")) {
+    return "poster";
+  }
+  if (blob.includes(" plant ") || blob.includes(" planter ") || blob.includes(" vase ")) return "plant";
+  if (blob.includes(" pillow ") || blob.includes(" blanket ") || blob.includes(" throw ")) return "pillow";
+
+  return "organizer";
+}
+
+function matchesInterestTags(product: Product, queryTags: string[]) {
+  if (queryTags.length === 0) return true;
+
+  const tagSet = new Set((product.tags || []).map((tag) => canonicalizeTag(tag)));
+  const values = [
+    product.displayName,
+    product.name,
+    product.category,
+    product.description,
+    product.primaryType,
+    ...(product.roomTags || []),
+    ...(product.styleTags || []),
+    ...(product.tags || []),
+  ];
+  const canonicalBlob = values.map((value) => canonicalizeTag(value)).filter(Boolean).join(" ");
+  const normalizedBlob = values.map((value) => normalizeTerm(String(value ?? ""))).filter(Boolean).join(" ");
+
+  return queryTags.some((tag) => {
+    const canonicalTag = canonicalizeTag(tag);
+    const normalizedTag = normalizeTerm(String(tag ?? ""));
+    return tagSet.has(canonicalTag) || canonicalBlob.includes(canonicalTag) || normalizedBlob.includes(normalizedTag);
+  });
+}
+
 // Maps Firestore docs to your existing Product type (fills missing fields safely)
 function normalizeProduct(id: string, data: any): Product {
+  const price = toFiniteNumber(data.price, 0);
+
+  const safeDisplayName = String(data.displayName ?? data.title ?? data.name ?? "Untitled").trim();
+  const safeBrand =
+    data.brand && String(data.brand).trim().length > 0
+      ? String(data.brand).trim()
+      : "Seligo.AI";
+  const safeDescription = String(data.description ?? "No description yet.").trim();
+  const hasBadDescription =
+    !safeDescription ||
+    safeDescription.toLowerCase().includes("placeholder") ||
+    safeDescription.toLowerCase().includes("testing") ||
+    safeDescription.toLowerCase().includes("no description");
+  const betterDescription = hasBadDescription ? "" : safeDescription;
+  const safeCategoryRaw = String(data.category ?? "General").trim();
+  const rawImageUrl = String(data.imageUrl ?? data.imageURL ?? "").trim();
+  const safeImageUrl = rawImageUrl || "https://picsum.photos/seed/fallback/600/600";
+  const explicitPrimaryType = String(data.primaryType ?? "").trim().toLowerCase() as PrimaryType | "";
+  const isCurated = Boolean(data.isCurated ?? data.isLaunch ?? false);
+  const imageApproved =
+    typeof data.imageApproved === "boolean"
+      ? data.imageApproved
+      : isApprovedImageUrl(rawImageUrl);
+  const active = data.active !== false;
+
+  const rawBaseTags = canonicalizeTagList(data.tags);
+  const rawRoomTags = canonicalizeTagList(data.roomTags);
+  const rawStyleTags = canonicalizeTagList(data.styleTags);
+
+  const textBlob = `${safeDisplayName} ${safeCategoryRaw} ${betterDescription} ${rawBaseTags.join(" ")} ${rawRoomTags.join(" ")} ${rawStyleTags.join(" ")}`.toLowerCase();
+  const normalizedBlob = ` ${normalizeTerm(textBlob)} `;
+  const hasTerm = (term: string) => normalizedBlob.includes(` ${normalizeTerm(term)} `);
+  const extraTags: string[] = [];
+
+  // price tags
+  if (price <= 30) extraTags.push("under-30", "budget");
+  if (price <= 50) extraTags.push("under-50");
+  if (price <= 80) extraTags.push("affordable");
+
+  // room / use tags
+  if (hasTerm("desk")) extraTags.push("desk", "desk-setup");
+  if (hasTerm("workspace")) extraTags.push("desk", "desk-setup");
+  if (hasTerm("bedroom")) extraTags.push("bedroom", "cozy-bedroom");
+  if (hasTerm("nightstand")) extraTags.push("nightstand", "cozy-bedroom");
+  if (hasTerm("wall")) extraTags.push("wall", "wall-decor");
+  if (hasTerm("entryway")) extraTags.push("entryway");
+  if (hasTerm("living room")) extraTags.push("living-room");
+
+  // function tags
+  if (hasTerm("lamp") || hasTerm("lighting") || hasTerm("light")) {
+    extraTags.push("lighting", "lamp");
+  }
+
+  if (hasTerm("mirror")) {
+    extraTags.push("mirror", "mirrors");
+  }
+
+  if (
+    hasTerm("print") ||
+    hasTerm("poster") ||
+    hasTerm("wall art") ||
+    hasTerm("framed")
+  ) {
+    extraTags.push("wall-decor", "art", "print");
+  }
+
+  if (
+    hasTerm("storage") ||
+    hasTerm("organizer") ||
+    hasTerm("basket") ||
+    hasTerm("bin") ||
+    hasTerm("tray")
+  ) {
+    extraTags.push("storage", "organizer");
+  }
+
+  if (
+    hasTerm("shelf") ||
+    hasTerm("ledge") ||
+    hasTerm("bookend")
+  ) {
+    extraTags.push("shelf-styling", "shelf");
+  }
+
+  if (
+    hasTerm("plant") ||
+    hasTerm("planter") ||
+    hasTerm("greenery") ||
+    hasTerm("vase")
+  ) {
+    extraTags.push("plants", "plant");
+  }
+
+  if (
+    hasTerm("pillow") ||
+    hasTerm("blanket") ||
+    hasTerm("throw")
+  ) {
+    extraTags.push("cozy-bedroom", "cozy");
+  }
+
+  // style / vibe tags
+  if (hasTerm("cozy")) extraTags.push("cozy");
+  if (hasTerm("minimal")) extraTags.push("minimal");
+  if (hasTerm("modern")) extraTags.push("modern");
+  if (hasTerm("warm")) extraTags.push("warm");
+  if (hasTerm("neutral")) extraTags.push("neutral");
+  if (hasTerm("wood")) extraTags.push("wood");
+  if (hasTerm("soft")) extraTags.push("soft");
+
+  // fit / lifestyle tags
+  if (hasTerm("small space")) extraTags.push("small-space-fixes", "small-space");
+  if (hasTerm("compact")) extraTags.push("small-space-fixes", "compact");
+  if (hasTerm("renter")) extraTags.push("small-space-fixes", "renter-friendly");
+
+  const primaryType = (explicitPrimaryType || inferPrimaryTypeFromBlob(` ${normalizeTerm(`${safeDisplayName} ${safeCategoryRaw} ${betterDescription} ${rawBaseTags.join(" ")} ${extraTags.join(" ")}`)} `)) as PrimaryType;
+  const canonicalCategory = inferCanonicalCategory(normalizedBlob, primaryType, safeCategoryRaw);
+  const roomTags = Array.from(new Set([
+    ...rawRoomTags,
+    ...inferRoomTags(primaryType, [...rawBaseTags, ...extraTags]),
+  ])).filter(Boolean);
+  const styleTags = Array.from(
+    new Set([
+      ...rawStyleTags,
+      ...inferStyleTags(normalizedBlob),
+    ])
+  ).filter(Boolean);
+  const tags = buildStructuredTags(primaryType, canonicalCategory, price, [
+    ...rawBaseTags,
+    ...extraTags,
+    ...roomTags,
+    ...styleTags,
+  ]);
+  const swipeEligible =
+    typeof data.swipeEligible === "boolean"
+      ? data.swipeEligible
+      : inferSwipeEligible(price, primaryType, rawImageUrl, active, normalizedBlob);
+
   return {
     id,
-    name: data.name ?? data.title ?? "Untitled",
-    brand: data.brand && String(data.brand).trim().length > 0 ? String(data.brand) : "Seligo.AI",
-    price: Number(data.price ?? 0),
-    description: data.description ?? "No description yet.",
-    category: data.category ?? "General",
-    imageUrl: data.imageUrl ?? data.imageURL ?? "https://picsum.photos/seed/fallback/600/600",
-    tags: Array.isArray(data.tags) ? data.tags : [],
+    name: safeDisplayName,
+    displayName: safeDisplayName,
+    brand: safeBrand,
+    price,
+    description: betterDescription,
+    category: canonicalCategory,
+    imageUrl: safeImageUrl,
+    tags,
+    roomTags,
+    styleTags,
     matchScore: Number(data.matchScore ?? 85),
+    primaryType,
+    isCurated,
+    swipeEligible,
+    imageApproved,
+    isLaunch: Boolean(data.isLaunch),
+    active,
     checkoutType: data.checkoutType,
     merchant: data.merchant,
     purchaseUrl: data.purchaseUrl,
@@ -126,29 +553,176 @@ function normalizeProduct(id: string, data: any): Product {
   };
 }
 
+function expandInterestTags(interests: string[]) {
+  const normalizedInterests = normalizeInterestIds(interests);
+
+  const mappedGroups = normalizedInterests.map((interest) => {
+    const mapped = withLegacyTagVariants(INTEREST_QUERY_TAGS[interest] ?? []);
+    return mapped.length ? mapped : [canonicalizeTag(interest)];
+  });
+
+  const expanded: string[] = [];
+  const seen = new Set<string>();
+
+  for (let tagIndex = 0; expanded.length < 10; tagIndex += 1) {
+    let addedThisRound = false;
+
+    for (const group of mappedGroups) {
+      const tag = group[tagIndex];
+      if (!tag || seen.has(tag)) continue;
+
+      seen.add(tag);
+      expanded.push(tag);
+      addedThisRound = true;
+
+      if (expanded.length === 10) break;
+    }
+
+    if (!addedThisRound) break;
+  }
+
+  for (const interest of normalizedInterests) {
+    if (expanded.length === 10) break;
+
+    const tag = canonicalizeTag(interest);
+    if (!tag || seen.has(tag)) continue;
+
+    seen.add(tag);
+    expanded.push(tag);
+  }
+
+  return expanded;
+}
+
 // Load products (tries to match tags with your selected interests)
 export async function fetchProductsByInterests(interests: string[], take = 20): Promise<Product[]> {
-  // Firestore allows up to 10 values in array-contains-any
-  const interests10 = interests.slice(0, 10);
+  const queryTags = expandInterestTags(interests);
+  if (import.meta.env.DEV) {
+    console.log("expanded query tags snapshot", JSON.stringify(queryTags));
+  }
 
   const col = collection(db, "products");
 
-  // If user chose interests, filter by tags; otherwise just load anything.
-  const q = interests10.length > 0
-    ? query(col, where("tags", "array-contains-any", interests10), limit(take))
-    : query(col, limit(take));
+  try {
+    const q = queryTags.length > 0
+      ? query(
+          col,
+          where("active", "==", true),
+          where("swipeEligible", "==", true),
+          where("imageApproved", "==", true),
+          where("tags", "array-contains-any", queryTags),
+          orderBy("updatedAt", "desc"),
+          limit(take)
+        )
+      : query(
+          col,
+          where("active", "==", true),
+          where("swipeEligible", "==", true),
+          where("imageApproved", "==", true),
+          orderBy("updatedAt", "desc"),
+          limit(take)
+        );
 
-  const snap = await getDocs(q);
-  return snap.docs.map(d => normalizeProduct(d.id, d.data()));
+    const snap = await getDocs(q);
+    const items = sliceInterestMatches(normalizeApprovedProductsFromDocs(snap.docs), queryTags, take);
+    if (items.length > 0) return items;
+
+    return fetchLooseInterestMatches(queryTags, take);
+  } catch (error) {
+    if (!isIndexFallbackError(error)) throw error;
+
+    return fetchLooseInterestMatches(queryTags, take);
+  }
+}
+
+export async function fetchCuratedProductsByInterests(interests: string[], take = 60): Promise<Product[]> {
+  const queryTags = expandInterestTags(interests);
+  if (import.meta.env.DEV) {
+    console.log("expanded query tags snapshot", JSON.stringify(queryTags));
+  }
+  const col = collection(db, "products");
+  try {
+    const q = query(
+      col,
+      where("isCurated", "==", true),
+      where("active", "==", true),
+      where("swipeEligible", "==", true),
+      where("imageApproved", "==", true),
+      orderBy("updatedAt", "desc"),
+      limit(Math.max(take, 120))
+    );
+    const snap = await getDocs(q);
+    console.log("curated snap.docs.length", snap.docs.length);
+    console.log(
+      "curated raw docs snapshot",
+      snap.docs.slice(0, 5).map((d) => ({
+        id: d.id,
+        isCurated: d.data().isCurated,
+        active: d.data().active,
+        swipeEligible: d.data().swipeEligible,
+        imageApproved: d.data().imageApproved,
+        updatedAt: d.data().updatedAt,
+        category: d.data().category,
+        primaryType: d.data().primaryType,
+        tags: d.data().tags,
+        roomTags: d.data().roomTags,
+        styleTags: d.data().styleTags,
+      }))
+    );
+
+    const normalized = normalizeApprovedProductsFromDocs(snap.docs);
+    console.log("curated normalized length", normalized.length);
+
+    const items = sliceInterestMatches(normalized, queryTags, take);
+    console.log("curated sliced length", items.length);
+    console.log(
+      "curated sliced snapshot",
+      items.slice(0, 5).map((p) => ({
+        id: p.id,
+        category: p.category,
+        primaryType: p.primaryType,
+        tags: p.tags,
+        roomTags: p.roomTags,
+        styleTags: p.styleTags,
+      }))
+    );
+    if (items.length > 0) return items;
+
+    const loose = await fetchLooseInterestMatches(queryTags, take, { curatedOnly: true });
+    console.log("curated loose fallback length", loose.length);
+    return loose;
+  } catch (error) {
+    if (!isIndexFallbackError(error)) throw error;
+
+    const loose = await fetchLooseInterestMatches(queryTags, take, { curatedOnly: true });
+    console.log("curated loose fallback length after index fallback", loose.length);
+    return loose;
+  }
 }
 
 // Save swipe to Firestore
 // Load all products from Firestore (no interest filtering)
 export async function fetchProducts(take = 30): Promise<Product[]> {
   const col = collection(db, "products");
-  const q = query(col, limit(take));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => normalizeProduct(d.id, d.data()));
+  try {
+    const q = query(
+      col,
+      where("active", "==", true),
+      where("swipeEligible", "==", true),
+      where("imageApproved", "==", true),
+      orderBy("updatedAt", "desc"),
+      limit(take)
+    );
+    const snap = await getDocs(q);
+    const items = normalizeApprovedProductsFromDocs(snap.docs).slice(0, take);
+    if (items.length > 0) return items;
+
+    return fetchLooseInterestMatches([], take);
+  } catch (error) {
+    if (!isIndexFallbackError(error)) throw error;
+
+    return fetchLooseInterestMatches([], take);
+  }
 }
 
 export type ProductsPage = {
@@ -163,13 +737,48 @@ export async function fetchProductsPage(
 ): Promise<ProductsPage> {
   const col = collection(db, "products");
 
-  const q = cursor
-    ? query(col, orderBy("__name__"), startAfter(cursor), limit(take))
-    : query(col, orderBy("__name__"), limit(take));
+  let snap;
+  try {
+    const q = cursor
+      ? query(
+          col,
+          where("active", "==", true),
+          where("swipeEligible", "==", true),
+          where("imageApproved", "==", true),
+          orderBy("updatedAt", "desc"),
+          orderBy("__name__"),
+          startAfter(cursor),
+          limit(take)
+        )
+      : query(
+          col,
+          where("active", "==", true),
+          where("swipeEligible", "==", true),
+          where("imageApproved", "==", true),
+          orderBy("updatedAt", "desc"),
+          orderBy("__name__"),
+          limit(take)
+        );
 
-  const snap = await getDocs(q);
+    snap = await getDocs(q);
+  } catch (error) {
+    if (!isIndexFallbackError(error)) throw error;
 
-  const items = snap.docs.map(d => normalizeProduct(d.id, d.data()));
+    const fallbackQuery = cursor
+      ? query(col, orderBy("__name__"), startAfter(cursor), limit(take))
+      : query(col, orderBy("__name__"), limit(take));
+
+    snap = await getDocs(fallbackQuery);
+  }
+
+  const items = normalizeApprovedProductsFromDocs(snap.docs);
+  if (!cursor && items.length === 0) {
+    return {
+      items: await fetchLooseInterestMatches([], take),
+      cursor: null,
+      hasMore: false,
+    };
+  }
   const nextCursor = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
 
   return {
@@ -184,30 +793,70 @@ export async function fetchProductsByInterestsPage(
   take = 20,
   cursor: QueryDocumentSnapshot<DocumentData> | null = null
 ): Promise<ProductsPage> {
-  const interests10 = interests.slice(0, 10);
+  const queryTags = expandInterestTags(interests);
+  if (import.meta.env.DEV) {
+    console.log("expanded query tags snapshot", JSON.stringify(queryTags));
+  }
   const col = collection(db, "products");
 
   // if no interests, fallback to normal paging
-  if (interests10.length === 0) return fetchProductsPage(take, cursor);
+  if (queryTags.length === 0) return fetchProductsPage(take, cursor);
 
-  const q = cursor
-    ? query(
-        col,
-        where("tags", "array-contains-any", interests10),
-        orderBy("__name__"),
-        startAfter(cursor),
-        limit(take)
-      )
-    : query(
-        col,
-        where("tags", "array-contains-any", interests10),
-        orderBy("__name__"),
-        limit(take)
-      );
+  let snap;
+  try {
+    const q = cursor
+      ? query(
+          col,
+          where("active", "==", true),
+          where("swipeEligible", "==", true),
+          where("imageApproved", "==", true),
+          where("tags", "array-contains-any", queryTags),
+          orderBy("updatedAt", "desc"),
+          orderBy("__name__"),
+          startAfter(cursor),
+          limit(take)
+        )
+      : query(
+          col,
+          where("active", "==", true),
+          where("swipeEligible", "==", true),
+          where("imageApproved", "==", true),
+          where("tags", "array-contains-any", queryTags),
+          orderBy("updatedAt", "desc"),
+          orderBy("__name__"),
+          limit(take)
+        );
 
-  const snap = await getDocs(q);
+    snap = await getDocs(q);
+  } catch (error) {
+    if (!isIndexFallbackError(error)) throw error;
 
-  const items = snap.docs.map(d => normalizeProduct(d.id, d.data()));
+    const fallbackQuery = cursor
+      ? query(
+          col,
+          where("tags", "array-contains-any", queryTags),
+          orderBy("__name__"),
+          startAfter(cursor),
+          limit(take)
+        )
+      : query(
+          col,
+          where("tags", "array-contains-any", queryTags),
+          orderBy("__name__"),
+          limit(take)
+        );
+
+    snap = await getDocs(fallbackQuery);
+  }
+
+  const items = sliceInterestMatches(normalizeApprovedProductsFromDocs(snap.docs), queryTags, take);
+  if (!cursor && items.length === 0) {
+    return {
+      items: await fetchLooseInterestMatches(queryTags, take),
+      cursor: null,
+      hasMore: false,
+    };
+  }
   const nextCursor = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
 
   return {
@@ -275,7 +924,14 @@ export async function deleteMySwipe(productId: string) {
 }
 
 function toFiniteNumber(v: any, fallback = 0) {
-  const n = typeof v === "number" ? v : Number(v);
+  if (typeof v === "number") {
+    return Number.isFinite(v) ? v : fallback;
+  }
+
+  const normalized = String(v ?? "")
+    .replace(/[^0-9.-]+/g, "")
+    .trim();
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : fallback;
 }
 

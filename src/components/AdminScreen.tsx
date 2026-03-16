@@ -87,6 +87,7 @@ type StatsState = {
     failed: Stat;
     returned: Stat;
     cleanReturnCount: number;
+    openCheckoutCount: number;
     uniqueSentSids: number;
     uniqueReturnSids: number;
   };
@@ -241,7 +242,7 @@ async function fetchAllStatsSince(
   const primaryDismissCountsByVar: Record<ConfirmVariant, number> = { A: 0, B: 0 };
 
   const emailPanelCounts = { email_sent: 0, email_failed: 0, email_return: 0 };
-  const emailPanelCounts2 = { email_return_clean: 0 };
+  const emailPanelCounts2 = { email_return_clean: 0, email_return_open_checkout: 0 };
   const leadDocCreated = { count: 0, sessions: new Set<string>() };
   const emailPanelSessionSets = {
     email_sent: new Set<string>(),
@@ -392,6 +393,8 @@ async function fetchAllStatsSince(
             && String(utmRaw?.utm_campaign ?? "").toLowerCase() === "cart_links") {
             emailLeadReturnSessionSet.add(sid);
           }
+        } else if (panel === "email_return_open_checkout") {
+          emailPanelCounts2.email_return_open_checkout += 1;
         }
       }
 
@@ -670,6 +673,7 @@ async function fetchAllStatsSince(
         sessions: emailPanelSessionSets.email_return.size,
       },
       cleanReturnCount: emailPanelCounts2.email_return_clean,
+      openCheckoutCount: emailPanelCounts2.email_return_open_checkout,
       uniqueSentSids: emailPanelSidSets.email_sent.size,
       uniqueReturnSids: emailPanelSidSets.email_return.size,
     },
@@ -773,6 +777,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
     failed: { count: 0, sessions: 0 },
     returned: { count: 0, sessions: 0 },
     cleanReturnCount: 0,
+    openCheckoutCount: 0,
     uniqueSentSids: 0,
     uniqueReturnSids: 0,
   };
@@ -864,6 +869,7 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const emailFailPipelineRate = pct(emailPanel.failed.count, leadDocCreated.count);
   const emailReturnPerSentRate = pct(emailPanel.returned.count, emailPanel.sent.count);
   const cleanEmailReturnPerSentRate = pct(emailPanel.cleanReturnCount, emailPanel.sent.count);
+  const emailReturnOpenCheckoutRate = pct(emailPanel.openCheckoutCount, emailPanel.returned.count);
   const uniqueEmailReturnPerSentRate = pct(emailPanel.uniqueReturnSids, emailPanel.uniqueSentSids);
   const leadPerBuy   = pct(sessNum("lead_submit", "buy_click"), sess("buy_click"));
   const leadPerBuy_cartConfirm = pct(leadPairsBySource["cart_confirm"]?.perBuy ?? 0, sess("buy_click"));
@@ -1037,6 +1043,10 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between">
             <span className="text-slate-600">Unique return rate (distinct email_return.sid / email_sent.sid)</span>
             <span className="font-black text-slate-900">{uniqueEmailReturnPerSentRate}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Return → checkout rate (email_return_open_checkout / email_return)</span>
+            <span className="font-black text-slate-900">{emailReturnOpenCheckoutRate}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Lead rate (cart_confirm / checkout_open)</span>

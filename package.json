@@ -14,10 +14,17 @@
     "export:leads": "tsx scripts/exportLeads.ts",
     "export:events": "tsx scripts/exportEvents.ts",
     "backfill:checkout": "tsx scripts/backfillCheckoutFields.ts",
+    "migrate:products": "tsx scripts/migrateProducts.ts",
+    "migrate:products:dry": "tsx scripts/migrateProducts.ts --dry-run",
+    "backfill:products": "tsx scripts/migrateProducts.ts",
+    "backfill:products:dry": "tsx scripts/migrateProducts.ts --dry-run",
+    "retire:legacy": "tsx scripts/retireLegacyProducts.ts",
+    "retire:legacy:dry": "tsx scripts/retireLegacyProducts.ts --dry-run",
     "bulk:affiliate": "tsx scripts/bulkSetAffiliate.ts",
     "bulk:affiliate:dry": "tsx scripts/bulkSetAffiliate.ts --dry-run",
     "seed:launch": "tsx scripts/seedLaunchSet.ts",
-    "seed:launch:dry": "tsx scripts/seedLaunchSet.ts --dry-run"
+    "seed:launch:dry": "tsx scripts/seedLaunchSet.ts --dry-run",
+    "import:launch": "tsx scripts/importLaunchSet.ts"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

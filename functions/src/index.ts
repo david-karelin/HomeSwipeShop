@@ -118,18 +118,20 @@ function buildRoomscanEmail(opts: {
   const isCart = heading.toLowerCase().includes("cart");
   const campaign = isCart ? "cart_links" : "roomscan_picks";
   const sid = opts.sid ? encodeURIComponent(opts.sid) : "";
+  const appQuery = isCart ? "?view=cart&open=checkout" : "?open=roomscan";
   const appUrl =
     "https://seligo.vercel.app/" +
-    `?utm_source=email&utm_medium=lead&utm_campaign=${encodeURIComponent(campaign)}` +
+    appQuery +
+    `&utm_source=email&utm_medium=lead&utm_campaign=${encodeURIComponent(campaign)}` +
     "&utm_content=cta" +
     (sid ? `&sid=${sid}` : "");
 
   const cta = `
-    <div style="margin-top:28px; padding-top:18px; border-top:1px solid #e2e8f0; text-align:left;">
+    <div style="margin-top:32px; padding-top:20px; border-top:1px solid #e2e8f0;">
       <a href="${appUrl}" style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;">
         See more picks →
       </a>
-      <div style="height:10px; line-height:10px;">&nbsp;</div>
+      <div style="height:12px; line-height:12px;">&nbsp;</div>
     </div>
   `;
 
@@ -160,46 +162,65 @@ function buildRoomscanEmail(opts: {
   return {html, text};
 }
 
-function buildGenericLeadEmail(opts?: { heading?: string; intro?: string; sid?: string }) {
+function buildGenericLeadEmail(opts?: {
+  heading?: string;
+  intro?: string;
+  sid?: string;
+}) {
   const heading = opts?.heading ?? "Your Seligo links";
   const intro =
     opts?.intro ??
-    "Thanks — we’ve saved your request. Come back to Seligo anytime to see more picks.";
+    "Thanks — we’ve saved your request. Open Seligo to explore more picks and get back to discovering pieces that fit your space.";
 
   const campaign = "generic_links";
+  const sid = opts?.sid ? encodeURIComponent(opts.sid) : "";
+
   const appUrl =
     "https://seligo.vercel.app/" +
-    `?utm_source=email&utm_medium=lead&utm_campaign=${encodeURIComponent(campaign)}` +
-    "&utm_content=cta" +
-    (opts?.sid ? `&sid=${encodeURIComponent(opts.sid)}` : "");
+    "?open=roomscan" +
+    `&utm_source=email` +
+    `&utm_medium=lead` +
+    `&utm_campaign=${encodeURIComponent(campaign)}` +
+    `&utm_content=cta` +
+    (sid ? `&sid=${sid}` : "");
 
   const cta = `
-    <div style="margin-top:16px;">
-      <a href="${appUrl}" style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;">
-        See more picks →
+    <div style="margin-top:28px; padding-top:18px; border-top:1px solid #e2e8f0; text-align:left;">
+      <a
+        href="${appUrl}"
+        style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;"
+      >
+        Discover more picks →
       </a>
+      <div style="height:10px; line-height:10px;">&nbsp;</div>
     </div>
   `;
 
   const html = `
-  <div style="font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding:20px; color:#0f172a;">
-    <div style="font-size:18px; font-weight:900;">${escapeHtml(heading)}</div>
-    <div style="margin-top:6px; color:#475569;">${escapeHtml(intro)}</div>
+    <div style="font-family:Arial,sans-serif; background:#f8fafc; padding:24px;">
+      <div style="max-width:640px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:20px; padding:24px;">
+        <div style="font-size:24px; font-weight:900; color:#0f172a; margin-bottom:8px;">
+          ${heading}
+        </div>
 
-    ${cta}
+        <div style="font-size:15px; line-height:1.6; color:#475569;">
+          ${intro}
+        </div>
 
-    <div style="color:#94a3b8; font-size:12px; margin-top:16px;">
-      You’re receiving this because you requested links from Seligo.
+        <div style="height:18px; line-height:18px; margin:18px 0 0 0; clear:both;">&nbsp;</div>
+
+        ${cta}
+
+        <div style="color:#94a3b8; font-size:12px; margin-top:16px;">
+          You’re receiving this because you requested links from Seligo.
+        </div>
+      </div>
     </div>
-  </div>
   `;
 
-  const text =
-    `${heading}\n\n` +
-    `${intro}\n\n` +
-    `See more picks: ${appUrl}\n`;
+  const text = `${heading}\n\n${intro}\n\nOpen Seligo:\n${appUrl}\n\nYou’re receiving this because you requested links from Seligo.`;
 
-  return {html, text};
+  return { html, text };
 }
 
 async function logEmailEvent(opts: {
