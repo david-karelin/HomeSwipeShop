@@ -6,7 +6,7 @@ const readOptionalString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
 export const AFFILIATE_DISCLOSURE_TEXT =
-  "Some links may be affiliate links, which means Seligo may earn a small commission at no extra cost to you.";
+  "Affiliate Disclosure: Some links on Seligo are affiliate links. As an Amazon Associate I earn from qualifying purchases.";
 
 export function getBrowserAmazonAssocTag() {
   return readOptionalString((import.meta as ViteImportMeta).env?.VITE_AMAZON_ASSOC_TAG);

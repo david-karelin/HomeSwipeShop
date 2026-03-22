@@ -927,7 +927,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 {AFFILIATE_DISCLOSURE_TEXT}
               </div>
 
-              <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400">
+              <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-bold text-slate-500">
                 <button type="button" onClick={onPrivacy} className="hover:text-slate-600">
                   Privacy
                 </button>
@@ -945,10 +945,6 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
             className="sticky bottom-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-6 pt-4"
             style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
           >
-            <div className="mb-3 text-center text-[11px] leading-relaxed text-slate-400">
-              {AFFILIATE_DISCLOSURE_TEXT}
-            </div>
-
             <button
               onClick={handleClose}
               className="w-full h-12 rounded-2xl bg-slate-900 text-white font-extrabold"

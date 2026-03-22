@@ -3008,7 +3008,7 @@ const App: React.FC = () => {
                       {overlayFooterText}
                     </div>
 
-                    <div className="text-[11px] leading-relaxed text-slate-400">
+                    <div className="text-[11px] leading-relaxed text-slate-500">
                       {AFFILIATE_DISCLOSURE_TEXT}
                     </div>
                   </div>
@@ -3623,14 +3623,26 @@ const App: React.FC = () => {
                   Reset my data
                 </button>
 
-                <div className="mt-5 flex justify-center gap-4 text-[11px] font-bold text-slate-400">
-                  <button onClick={() => goView("privacy", "profile_footer")} className="hover:text-slate-600">
+                <div className="mt-5 flex justify-center gap-4 text-[11px] font-bold text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => goView("privacy", "profile_footer")}
+                    className="transition-colors hover:text-slate-700"
+                  >
                     Privacy
                   </button>
-                  <button onClick={() => goView("terms", "profile_footer")} className="hover:text-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => goView("terms", "profile_footer")}
+                    className="transition-colors hover:text-slate-700"
+                  >
                     Terms
                   </button>
-                  <button onClick={() => goView("disclosure", "profile_footer")} className="hover:text-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => goView("disclosure", "profile_footer")}
+                    className="transition-colors hover:text-slate-700"
+                  >
                     Disclosure
                   </button>
                 </div>
