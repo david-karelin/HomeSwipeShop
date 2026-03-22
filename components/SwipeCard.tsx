@@ -185,6 +185,13 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     triggerFeedback(dir === "right" ? "save" : "pass");
 
     swipeTimeoutRef.current = window.setTimeout(() => {
+      offsetRef.current = { x: 0, y: 0 };
+      const el = cardRef.current;
+      if (el) {
+        el.style.transition = "none";
+        el.style.transform = "translate3d(0px, 0px, 0px) rotate(0deg) scale(1)";
+      }
+
       if (dir === "right") {
         onSelectAction("wishlist");
       } else {
@@ -214,6 +221,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
       style={{
         willChange: "transform",
         touchAction: "pan-y",
@@ -221,7 +229,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       }}
       className={[
         "relative",
-        "w-[calc(100vw-1.5rem)]",
+        "w-[calc(100vw-1.25rem)]",
         "max-w-[396px] sm:max-w-[404px]",
         "select-none",
         isSwiping ? "pointer-events-none" : "",
@@ -264,14 +272,14 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           <img
             src={product.imageUrl}
             alt={displayProductName}
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain bg-[#F3F4F6]"
           />
 
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/16 via-transparent to-white/5" />
 
           <div
             style={{ opacity: opacityLike }}
-            className="pointer-events-none absolute left-5 top-5 z-20 rotate-[-12deg] rounded-2xl border-2 border-emerald-400 bg-emerald-500/14 px-4 py-2.5 backdrop-blur-md shadow-lg"
+            className="pointer-events-none absolute left-5 top-5 z-20 rotate-[-12deg] rounded-2xl border-2 border-emerald-400 bg-emerald-500/14 px-4 py-2.5 shadow-lg"
           >
             <span className="text-[26px] font-black uppercase tracking-tight text-emerald-500">
               YES
@@ -280,7 +288,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
           <div
             style={{ opacity: opacityPass }}
-            className="pointer-events-none absolute right-5 top-5 z-20 rotate-[12deg] rounded-2xl border-2 border-rose-500 bg-rose-500/12 px-4 py-2.5 backdrop-blur-md shadow-lg"
+            className="pointer-events-none absolute right-5 top-5 z-20 rotate-[12deg] rounded-2xl border-2 border-rose-500 bg-rose-500/12 px-4 py-2.5 shadow-lg"
           >
             <span className="text-[26px] font-black uppercase tracking-tight text-rose-500">
               PASS
