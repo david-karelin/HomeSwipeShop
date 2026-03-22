@@ -40,7 +40,7 @@ export const onboardingCopy = {
   interestsRoomScanCta: "Scan my room instead",
   interestLabels,
   interestDescriptions,
-  browsingHint: "Swipe right to save room upgrades you like.",
+  browsingHint: "Swipe right to save upgrades",
   featureCards: [
     {
       title: "RoomScan",

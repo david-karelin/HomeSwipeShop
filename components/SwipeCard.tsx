@@ -1,14 +1,26 @@
 
-import React, { useState } from 'react';
-import { Product } from '../types';
-import { Heart, X, ShoppingCart, Bookmark } from 'lucide-react';
-import { beautifyProductName, getDisplayVibeTag, getShortProductName } from '../src/lib/feed';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import type { Product } from "../types";
+import { Heart, Sparkles, X } from "lucide-react";
+import { beautifyProductName, getDisplayVibeTag } from "../src/lib/feed";
 
 interface SwipeCardProps {
   product: Product;
-  onSwipe: (direction: 'left' | 'right') => void;
-  onSelectAction: (action: 'wishlist' | 'cart') => void;
+  onSwipe: (direction: "left" | "right") => void;
+  onSelectAction: (action: "wishlist" | "cart") => void;
   onTap: () => void;
+}
+
+function clampCardTitle(name: string) {
+  const cleaned = String(name || "").trim();
+  if (cleaned.length <= 34) return cleaned;
+  return `${cleaned.slice(0, 31).trimEnd()}...`;
+}
+
+function clampCardDescription(text: string) {
+  const cleaned = String(text || "").trim();
+  if (cleaned.length <= 98) return cleaned;
+  return `${cleaned.slice(0, 95).trimEnd()}...`;
 }
 
 const SwipeCard: React.FC<SwipeCardProps> = ({
@@ -17,22 +29,30 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   onSelectAction,
   onTap,
 }) => {
-  const [isSwiping, setIsSwiping] = useState<'left' | 'right' | null>(null);
-  const [showActionPrompt, setShowActionPrompt] = useState(false);
+  const [isSwiping, setIsSwiping] = useState<"left" | "right" | null>(null);
+  const [feedback, setFeedback] = useState<null | "save" | "pass">(null);
 
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [hasMoved, setHasMoved] = useState(false);
+  const feedbackTimeoutRef = useRef<number | null>(null);
+  const swipeTimeoutRef = useRef<number | null>(null);
 
   const SWIPE_THRESHOLD = 120;
   const TAP_THRESHOLD = 10;
   const ROTATION_FACTOR = 0.1;
 
   const price = Number(product.price || 0);
+  const displayPrice =
+    Number.isFinite(price) && price > 0 ? `$${price.toFixed(2)}` : null;
+
   const displayVibeTag = getDisplayVibeTag(product);
-  const displayProductName = beautifyProductName(product);
-  const shortProductName = getShortProductName(displayProductName);
+  const displayProductName = beautifyProductName({
+    name: product.displayName || product.name || "",
+    category: product.category,
+    tags: product.tags,
+  });
 
   const fallbackDescription = (() => {
     if (displayVibeTag === "under $30") return "Cheap upgrade you can say yes to fast.";
@@ -47,18 +67,47 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const hasUsableDescription =
     product.description &&
     String(product.description).trim().length > 0 &&
-    !/placeholder|item for testing|no description|testing/i.test(String(product.description));
+    !/placeholder|item for testing|no description|testing/i.test(
+      String(product.description)
+    );
 
-  const cardDescription = hasUsableDescription ? String(product.description) : fallbackDescription;
+  const cardDescription = hasUsableDescription
+    ? String(product.description)
+    : fallbackDescription;
+
+  const shortTitle = clampCardTitle(displayProductName);
+  const shortDescription = clampCardDescription(cardDescription);
 
   const priceBadge =
-    price <= 30 ? "Under $30" :
-    price <= 50 ? "Under $50" :
-    price <= 80 ? "Affordable pick" :
-    "Statement pick";
+    price <= 30
+      ? "Under $30"
+      : price <= 50
+      ? "Under $50"
+      : price <= 80
+      ? "Affordable pick"
+      : "Statement pick";
+
+  const fitLabel =
+    price <= 30
+      ? "Quick budget win"
+      : price <= 50
+      ? "Renter-friendly find"
+      : "Standout upgrade";
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) window.clearTimeout(feedbackTimeoutRef.current);
+      if (swipeTimeoutRef.current) window.clearTimeout(swipeTimeoutRef.current);
+    };
+  }, []);
+
+  const triggerFeedback = (type: "save" | "pass") => {
+    if (feedbackTimeoutRef.current) window.clearTimeout(feedbackTimeoutRef.current);
+    setFeedback(type);
+    feedbackTimeoutRef.current = window.setTimeout(() => setFeedback(null), 520);
+  };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (showActionPrompt) return;
     setIsDragging(true);
     setHasMoved(false);
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -75,7 +124,10 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       setHasMoved(true);
     }
 
-    setOffset({ x: dx, y: dy });
+    setOffset({
+      x: dx,
+      y: Math.max(-26, Math.min(26, dy * 0.32)),
+    });
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -91,87 +143,52 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     }
 
     if (offset.x > SWIPE_THRESHOLD) {
-      completeSwipe('right');
+      completeSwipe("right");
     } else if (offset.x < -SWIPE_THRESHOLD) {
-      completeSwipe('left');
+      completeSwipe("left");
     } else {
       setOffset({ x: 0, y: 0 });
     }
   };
 
-  const completeSwipe = (dir: 'left' | 'right') => {
-    setIsSwiping(dir);
-    setOffset({ x: dir === 'right' ? 500 : -500, y: offset.y });
+  const completeSwipe = (dir: "left" | "right") => {
+    if (swipeTimeoutRef.current) window.clearTimeout(swipeTimeoutRef.current);
 
-    setTimeout(() => {
-      if (dir === 'right') {
-        setShowActionPrompt(true);
+    const nextOffsetY = Math.max(-24, Math.min(24, offset.y * 0.45));
+
+    setIsSwiping(dir);
+    setOffset({ x: dir === "right" ? 460 : -460, y: nextOffsetY });
+    triggerFeedback(dir === "right" ? "save" : "pass");
+
+    swipeTimeoutRef.current = window.setTimeout(() => {
+      if (dir === "right") {
+        onSelectAction("wishlist");
       } else {
-        onSwipe('left');
+        onSwipe("left");
       }
-    }, 200);
+    }, 170);
   };
 
-  const triggerSwipe = (dir: 'left' | 'right') => {
+  const triggerSwipe = (dir: "left" | "right") => {
     completeSwipe(dir);
   };
 
+  const dragProgress = Math.max(-1, Math.min(1, offset.x / SWIPE_THRESHOLD));
+  const absDrag = Math.abs(dragProgress);
   const rotation = offset.x * ROTATION_FACTOR;
+
   const opacityPass = Math.min(Math.max(-offset.x / SWIPE_THRESHOLD, 0), 1);
   const opacityLike = Math.min(Math.max(offset.x / SWIPE_THRESHOLD, 0), 1);
 
-  if (showActionPrompt) {
-    return (
-      <div className="relative w-full max-w-sm aspect-[3/4] bg-white rounded-[2.5rem] shadow-2xl p-8 flex flex-col items-center justify-center text-center space-y-6 animate-in zoom-in duration-300">
-        <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center animate-bounce">
-          <Heart className="w-12 h-12 text-[var(--seligo-accent)] fill-current" />
-        </div>
-
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-            Nice find
-          </div>
-          <h3 className="mt-2 text-3xl font-black text-slate-900 tracking-tight">
-            Keep this upgrade?
-          </h3>
-          <p className="text-slate-500 mt-2 font-medium">
-            Save or bag <span className="font-black text-slate-700">"{shortProductName}"</span>
-          </p>
-        </div>
-
-        <div className="w-full rounded-2xl bg-slate-50 px-4 py-3 border border-slate-100">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-black text-slate-900">${price.toFixed(2)}</span>
-            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-              {displayVibeTag}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 w-full pt-2">
-          <button
-            onClick={() => onSelectAction('wishlist')}
-            className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-[var(--seligo-primary)]/10 border border-slate-100 rounded-3xl transition-all group"
-          >
-            <Bookmark className="w-8 h-8 text-slate-400 group-hover:text-[var(--seligo-primary)] mb-2 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-[var(--seligo-primary)]">
-              Save
-            </span>
-          </button>
-
-          <button
-            onClick={() => onSelectAction('cart')}
-            className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-orange-50 border border-slate-100 rounded-3xl transition-all group"
-          >
-            <ShoppingCart className="w-8 h-8 text-slate-400 group-hover:text-[var(--seligo-cta)] mb-2 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-[var(--seligo-cta)]">
-              Add to Bag
-            </span>
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const dynamicShadow = useMemo(() => {
+    if (isDragging && offset.x > 0) {
+      return "0 30px 85px rgba(251,146,60,0.26), 0 14px 38px rgba(15,23,42,0.16)";
+    }
+    if (isDragging && offset.x < 0) {
+      return "0 30px 85px rgba(15,23,42,0.22), 0 14px 38px rgba(15,23,42,0.16)";
+    }
+    return "0 22px 60px rgba(249,115,22,0.10), 0 18px 45px rgba(0,0,0,0.18)";
+  }, [isDragging, offset.x]);
 
   return (
     <div
@@ -180,108 +197,201 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       style={{
-        transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${rotation}deg) scale(${isDragging ? 1.02 : 1})`,
+        transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${rotation}deg) scale(${isDragging ? 1.018 : 1})`,
         transition: isDragging
           ? "none"
-          : "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease",
-        touchAction: 'none',
-        cursor: isDragging ? 'grabbing' : 'grab',
+          : "transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease, filter 0.3s ease",
+        touchAction: "none",
+        cursor: isDragging ? "grabbing" : "grab",
         willChange: "transform",
+        filter: isDragging ? "saturate(1.03)" : "none",
       }}
       className={[
-        "relative w-full",
-        "max-w-[360px] sm:max-w-sm",
-        "aspect-[10/13]",
-        "bg-white rounded-[2.25rem]",
-        "shadow-[0_18px_45px_rgba(0,0,0,0.18)]",
-        "overflow-hidden select-none touch-none",
-        isSwiping ? "opacity-0 scale-95" : "opacity-100",
+        "relative",
+        "w-[calc(100vw-1.5rem)]",
+        "max-w-[396px] sm:max-w-[404px]",
+        "select-none touch-none",
+        isSwiping ? "pointer-events-none" : "",
       ].join(" ")}
     >
-      <img
-        src={product.imageUrl}
-        alt={displayProductName}
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+      <div
+        className="pointer-events-none absolute inset-x-6 -top-2 -bottom-3 rounded-[2.5rem] blur-2xl"
+        style={{
+          background:
+            dragProgress >= 0
+              ? `radial-gradient(circle at 50% 20%, rgba(251,146,60,${0.12 + absDrag * 0.16}), transparent 68%)`
+              : `radial-gradient(circle at 50% 20%, rgba(15,23,42,${0.08 + absDrag * 0.12}), transparent 68%)`,
+        }}
       />
 
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
+      {feedback === "save" && (
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center">
+          <div className="animate-[seligo-flash-save_520ms_ease-out] rounded-full bg-emerald-500 px-4 py-2 text-xs font-black text-white shadow-lg">
+            Saved ✓
+          </div>
+        </div>
+      )}
+
+      {feedback === "pass" && (
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center">
+          <div className="animate-[seligo-flash-save_520ms_ease-out] rounded-full bg-slate-900 px-4 py-2 text-xs font-black text-white shadow-lg">
+            Passed
+          </div>
+        </div>
+      )}
 
       <div
-        style={{ opacity: opacityLike }}
-        className="absolute top-6 left-6 border-2 border-[var(--seligo-accent)] rounded-xl px-4 py-2 rotate-[-12deg] pointer-events-none z-20 bg-emerald-500/10 backdrop-blur-sm"
+        className="overflow-hidden rounded-[2.25rem] bg-white"
+        style={{
+          boxShadow: dynamicShadow,
+          animation:
+            !isDragging && !isSwiping
+              ? "seligo-float 4.8s ease-in-out infinite"
+              : "none",
+        }}
       >
-        <span className="text-[var(--seligo-accent)] text-3xl font-black uppercase tracking-tight">
-          YES
-        </span>
-      </div>
+        <div className="relative h-[53vh] min-h-[408px] max-h-[528px] bg-[#F3F4F6]">
+          <img
+            src={product.imageUrl}
+            alt={displayProductName}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-700"
+            style={{
+              transform: `scale(${isDragging ? 1.04 : 1.018}) translateX(${dragProgress * 6}px)`,
+            }}
+          />
 
-      <div
-        style={{ opacity: opacityPass }}
-        className="absolute top-6 right-6 border-2 border-rose-500 rounded-xl px-4 py-2 rotate-[12deg] pointer-events-none z-20 bg-rose-500/10 backdrop-blur-sm"
-      >
-        <span className="text-rose-500 text-3xl font-black uppercase tracking-tight">
-          PASS
-        </span>
-      </div>
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/16 via-transparent to-white/5" />
 
-      <div className="absolute top-5 left-5 right-5 flex items-start justify-between gap-3 pointer-events-none">
-        <div className="rounded-full border border-white/15 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/90 backdrop-blur-sm">
-          {priceBadge}
-        </div>
+          <div
+            className="pointer-events-none absolute inset-y-0 -left-[12%] w-[42%] blur-2xl"
+            style={{
+              opacity: 0.16 + absDrag * 0.18,
+              transform: `translateX(${dragProgress * 26}px) skewX(-14deg)`,
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.0))",
+            }}
+          />
 
-        <div className="rounded-full border border-white/15 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/90 backdrop-blur-sm">
-          {displayVibeTag}
-        </div>
-      </div>
+          <div
+            style={{ opacity: opacityLike }}
+            className="pointer-events-none absolute left-5 top-5 z-20 rotate-[-12deg] rounded-2xl border-2 border-emerald-400 bg-emerald-500/14 px-4 py-2.5 backdrop-blur-md shadow-lg"
+          >
+            <span className="text-[26px] font-black uppercase tracking-tight text-emerald-500">
+              YES
+            </span>
+          </div>
 
-      <div className="absolute bottom-0 left-0 right-0 px-6 pb-6 pt-4 text-white">
-        <div className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.22em] text-[var(--seligo-primary)]">
-          Swipeable room upgrade
-        </div>
+          <div
+            style={{ opacity: opacityPass }}
+            className="pointer-events-none absolute right-5 top-5 z-20 rotate-[12deg] rounded-2xl border-2 border-rose-500 bg-rose-500/12 px-4 py-2.5 backdrop-blur-md shadow-lg"
+          >
+            <span className="text-[26px] font-black uppercase tracking-tight text-rose-500">
+              PASS
+            </span>
+          </div>
 
-        <div className="flex items-end justify-between gap-3">
-          <h2 className="text-[28px] leading-[1.05] font-extrabold line-clamp-2 drop-shadow-md">
-            {shortProductName}
-          </h2>
+          <div className="pointer-events-none absolute left-4 right-4 top-4 flex items-start justify-between gap-2">
+            <div className="rounded-full border border-white/15 bg-black/42 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-md">
+              {priceBadge}
+            </div>
 
-          <div className="shrink-0 text-[18px] font-black text-white/95 drop-shadow-md">
-            ${price.toFixed(2)}
+            <div className="rounded-full border border-white/15 bg-black/42 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-md">
+              {displayVibeTag}
+            </div>
+          </div>
+
+          <div className="pointer-events-none absolute left-4 right-4 bottom-4 flex items-end justify-between gap-3">
+            <div className="rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[10px] font-bold text-white/90 backdrop-blur-md">
+              {fitLabel}
+            </div>
+
+            <div className="rounded-full border border-white/15 bg-white/88 px-3 py-1.5 text-[10px] font-black text-slate-900 shadow-sm">
+              Tap for details
+            </div>
           </div>
         </div>
 
-        <p className="mt-2 text-[13px] text-white/75 font-medium line-clamp-2">
-          {cardDescription}
-        </p>
+        <div className="border-t border-slate-100 bg-white px-5 pt-4 pb-5">
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-sky-500/85">
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
+            <span>Swipeable room upgrade</span>
+          </div>
 
-        <div className="mt-4 flex gap-3 pointer-events-auto">
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerSwipe("left");
-            }}
-            className="flex-1 h-12 rounded-2xl flex items-center justify-center bg-white/10 backdrop-blur-xl border border-white/15 hover:bg-rose-500/40 transition-all active:scale-95"
-            aria-label="Pass"
-          >
-            <X className="w-6 h-6 text-white" />
-          </button>
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="overflow-hidden text-[21px] font-black leading-[1.02] tracking-[-0.03em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                {shortTitle}
+              </h2>
 
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerSwipe("right");
-            }}
-            className="flex-1 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold border border-white/10 shadow-lg transition-all active:scale-95"
-            style={{ background: "var(--seligo-cta)" }}
-            aria-label="Like"
-          >
-            <Heart className="w-6 h-6 text-white fill-current" />
-          </button>
-        </div>
+              <p className="mt-2 max-w-[92%] overflow-hidden text-[13px] leading-5 text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                {shortDescription}
+              </p>
+            </div>
 
-        <div className="mt-3 text-[10px] font-extrabold uppercase tracking-[0.22em] text-white/55">
-          Fast yes / no picks • Tap for details
+            {displayPrice ? (
+              <div className="shrink-0 rounded-2xl bg-slate-50 px-3 py-2 text-[15px] font-black text-slate-950 shadow-sm">
+                {displayPrice}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <div className="rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-orange-600">
+              Seligo pick
+            </div>
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              {priceBadge}
+            </div>
+          </div>
+
+          <div className="pointer-events-auto mt-5 flex items-center gap-3">
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerSwipe("left");
+              }}
+              className="group flex flex-1 items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-slate-50 py-3 text-slate-700 transition hover:bg-slate-100 active:scale-[0.96]"
+              aria-label="Pass"
+            >
+              <X
+                className="h-5 w-5 transition-transform duration-200 group-hover:scale-105"
+                strokeWidth={2.4}
+              />
+              <span className="text-[13px] font-black tracking-[-0.01em]">
+                Pass
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerSwipe("right");
+              }}
+              className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-[18px] bg-gradient-to-r from-[var(--seligo-cta)] to-orange-500 py-3 text-white shadow-[0_16px_34px_rgba(251,146,60,0.34)] transition hover:brightness-[1.03] active:scale-[0.96]"
+              aria-label="Save"
+            >
+              <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+              <span className="absolute inset-0">
+                <span className="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/12 animate-ping" />
+              </span>
+              <Heart
+                className="relative z-10 h-5 w-5 fill-current transition-transform duration-200 group-hover:scale-105"
+                strokeWidth={2.2}
+              />
+              <span className="relative z-10 text-[13px] font-black tracking-[-0.01em]">
+                Save
+              </span>
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--seligo-cta)]" />
+            <span>Swipe or tap to explore faster</span>
+          </div>
         </div>
       </div>
     </div>

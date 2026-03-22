@@ -2,10 +2,56 @@ import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { Product } from "../types";
 import * as Firestore from "../firestoreService";
-
-const AMAZON_TAG = import.meta.env.VITE_AMAZON_ASSOC_TAG || "";
+import {
+  getResolvedPurchaseUrl,
+  type RetailerLinkOptions,
+} from "../retailerLinks";
+import {
+  normalizeRetailerPlacement,
+  shouldIncludeCheckoutOpen,
+  type RetailerClickSource,
+  type RetailerClickView,
+  type RetailerPlacement,
+} from "../src/lib/retailerClicks";
+import { AFFILIATE_DISCLOSURE_TEXT } from "../src/lib/affiliateConfig";
 
 type ConfirmVariant = "A" | "B";
+
+type PendingBuyIntent = {
+  product: Product;
+  source: RetailerClickSource;
+  view: RetailerClickView;
+  placement: RetailerPlacement;
+  purchaseUrl: string;
+  includeCheckoutOpen: boolean;
+  skipPostBuyPrompt?: boolean;
+};
+
+type BuyIntentOverrides = Pick<
+  RetailerLinkOptions,
+  "source" | "view" | "placement" | "purchaseUrl" | "includeCheckoutOpen"
+> & {
+  skipPostBuyPrompt?: boolean;
+  bypassConfirmGate?: boolean;
+};
+
+const getLeadBuyIntent = (
+  source: "cart_confirm" | "post_buy_panel" | "roomscan"
+): Pick<PendingBuyIntent, "source" | "view" | "placement"> => {
+  if (source === "roomscan") {
+    return {
+      source: "roomscan",
+      view: "roomscan",
+      placement: "continue_to_retailer",
+    };
+  }
+
+  return {
+    source: "checkout_modal",
+    view: "checkout",
+    placement: "continue_to_retailer",
+  };
+};
 
 function variantFromSessionId(sessionId: string): ConfirmVariant {
   let hash = 0;
@@ -16,10 +62,10 @@ function variantFromSessionId(sessionId: string): ConfirmVariant {
   return Math.abs(hash) % 2 === 0 ? "A" : "B";
 }
 
-
 type CheckoutLinksModalProps = {
   open: boolean;
   onClose: () => void;
+  showActionToast: (label: string) => void;
   onPrivacy: () => void;
   onTerms: () => void;
   onDisclosure: () => void;
@@ -37,64 +83,18 @@ type CheckoutLinksModalProps = {
   roomscanLeadRequestNonce?: number;
   leadSource: "cart_confirm" | "post_buy_panel" | "roomscan";
   setLeadSource: (v: "cart_confirm" | "post_buy_panel" | "roomscan") => void;
-  onOpenProduct?: (p: Product) => void; // open your Product Details overlay
+  onOpenProduct?: (p: Product) => void;
+  onOpenRetailerLink: (product: Product, opts?: RetailerLinkOptions) => void;
+  onRemoveCartItem: (productId: string) => void;
+  onMoveCartItemToSaved: (p: Product) => void;
+  onRemoveSavedItem: (productId: string) => void;
+  onMoveSavedItemToBag: (p: Product) => void;
 };
-
-function buildAmazonSearchUrl(p: Product) {
-  const q = encodeURIComponent(`${p.name ?? ""} ${p.category ?? ""} home decor`.trim());
-  return `https://www.amazon.ca/s?k=${q}`;
-}
-
-function buildAmazonAsinUrl(asin: string) {
-  const a = asin.trim().toUpperCase();
-  const base = `https://www.amazon.ca/dp/${a}/ref=nosim`;
-  return AMAZON_TAG ? `${base}?tag=${encodeURIComponent(AMAZON_TAG)}` : base;
-}
-
-function getPurchaseUrl(p: Product): string {
-  const asin = (p.asin || "").trim();
-  if (asin.length === 10) return buildAmazonAsinUrl(asin);
-  const url = typeof p.purchaseUrl === "string" ? p.purchaseUrl.trim() : "";
-  return url || buildAmazonSearchUrl(p);
-}
-
-async function openWithTracking(
-  url: string,
-  payload: {
-    type: "buy_click" | "checkout_item_open";
-    view: string;
-    source: string;
-    productId: string;
-    category?: string;
-    price?: number;
-    purchaseUrl: string;
-  },
-  opts?: {
-    afterOpen?: () => void;
-  }
-) {
-  // Open immediately to avoid popup blocking
-  window.open(url, "_blank", "noopener,noreferrer");
-  opts?.afterOpen?.();
-
-  // Log asynchronously; don't block UI
-  void Firestore.logEvent({
-    type: payload.type,
-    view: payload.view,
-    source: payload.source,
-    productId: payload.productId,
-    purchaseUrl: payload.purchaseUrl,
-    meta: {
-      category: payload.category ?? "",
-      price: Number(payload.price ?? 0),
-    },
-  }).catch(console.warn);
-}
-
 
 const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   open,
   onClose,
+  showActionToast,
   onPrivacy,
   onTerms,
   onDisclosure,
@@ -113,13 +113,20 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   leadSource,
   setLeadSource,
   onOpenProduct,
+  onOpenRetailerLink,
+  onRemoveCartItem,
+  onMoveCartItemToSaved,
+  onRemoveSavedItem,
+  onMoveSavedItemToBag,
 }) => {
   const [pendingBuy, setPendingBuy] = useState<Product | null>(null);
+  const [pendingBuyIntent, setPendingBuyIntent] = useState<PendingBuyIntent | null>(null);
   const [confirmVariant, setConfirmVariant] = useState<ConfirmVariant>("A");
   const [lastBuyProduct, setLastBuyProduct] = useState<Product | null>(null);
   const [lastBoughtName, setLastBoughtName] = useState<string>("");
   const [postBuyPrompted, setPostBuyPrompted] = useState(false);
   const [leadPanelPulse, setLeadPanelPulse] = useState(false);
+
   const leadInputRef = useRef<HTMLInputElement | null>(null);
   const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
@@ -127,9 +134,35 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const primaryChoiceLoggedRef = useRef(false);
   const confirmInterceptedRef = useRef(false);
 
+  const bagCount = cart.length;
+  const savedCount = wishlist.length;
+  const totalCount = bagCount + savedCount;
+  const isCheckoutEmpty = bagCount === 0 && savedCount === 0;
+  const preferRetailer = hasSavedLeadEmail;
+
+  const clearPendingBuyState = () => {
+    setPendingBuy(null);
+    setPendingBuyIntent(null);
+    confirmInterceptedRef.current = false;
+  };
+
+  const handleClose = () => {
+    clearPendingBuyState();
+    setPostBuyLeadOpen(false);
+    setPostBuyPrompted(false);
+    onClose();
+  };
+
   useEffect(() => {
     leadSourceRef.current = leadSource;
   }, [leadSource]);
+
+  useEffect(() => {
+    if (!isCheckoutEmpty) return;
+
+    clearPendingBuyState();
+    setPostBuyLeadOpen(false);
+  }, [isCheckoutEmpty, setPostBuyLeadOpen]);
 
   function pulseLeadPanel() {
     setLeadPanelPulse(true);
@@ -151,7 +184,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         meta: {
           panel: "lead_prompt_shown",
         },
-      }).catch(console.warn);
+      }).catch(() => {});
     }
 
     requestAnimationFrame(() => {
@@ -161,12 +194,14 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         requestAnimationFrame(() => {
           const panel2 = document.querySelector('[data-lead-panel="1"]') as HTMLElement | null;
           const scroller2 = panel2?.closest('[data-modal-scroll="true"]') as HTMLElement | null;
+
           if (panel2 && scroller2) {
             const top = panel2.offsetTop - scroller2.clientHeight / 2 + panel2.clientHeight / 2;
             scroller2.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
           } else {
             panel2?.scrollIntoView({ behavior: "smooth", block: "center" });
           }
+
           pulseLeadPanel();
         });
         return;
@@ -179,6 +214,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       } else {
         panel.scrollIntoView({ behavior: "smooth", block: "center" });
       }
+
       pulseLeadPanel();
     });
   }
@@ -190,10 +226,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     try {
       const saved = localStorage.getItem("seligo_lead_email") || "";
       if (saved) setLeadEmail(saved);
-    } catch {
-      // ignore storage failures
-    }
-  }, [open, postBuyLeadOpen, leadEmail]);
+    } catch {}
+  }, [open, postBuyLeadOpen, leadEmail, setLeadEmail]);
 
   useEffect(() => {
     if (!open) return;
@@ -206,7 +240,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    void Firestore.ensureUserReady().catch(console.warn);
+    void Firestore.ensureUserReady().catch(() => {});
   }, [open]);
 
   useEffect(() => {
@@ -215,44 +249,82 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   useEffect(() => {
     if (open) return;
+    clearPendingBuyState();
     setPostBuyLeadOpen(false);
     setPostBuyPrompted(false);
   }, [open, setPostBuyLeadOpen]);
 
-  // Keep panel visible after successful lead so user can continue to retailer
-  useEffect(() => {
-    if (leadStatus !== "saved") return;
-  }, [leadStatus, setPostBuyLeadOpen]);
-
   useEffect(() => {
     if (!postBuyLeadOpen) return;
     if (leadEmail?.trim()) return;
+
     const t = window.setTimeout(() => leadInputRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
   }, [postBuyLeadOpen, leadEmail]);
 
-  const preferRetailer = hasSavedLeadEmail;
+  const getCheckoutPlacement = (productId: string): RetailerPlacement => {
+    return wishlist.some((item) => item.id === productId)
+      ? "checkout_saved_item"
+      : "checkout_cart_item";
+  };
 
-  function openConfirm(p: Product) {
+  const getCheckoutModalBuyContext = (
+    product: Product
+  ): Pick<PendingBuyIntent, "source" | "view" | "placement"> => {
+    if (postBuyLeadOpen) return getLeadBuyIntent(leadSourceRef.current);
+
+    return {
+      source: "checkout_modal",
+      view: "checkout",
+      placement: getCheckoutPlacement(product.id),
+    };
+  };
+
+  const resolveBuyIntent = (
+    product: Product,
+    opts?: BuyIntentOverrides
+  ): PendingBuyIntent | null => {
+    const defaults = getCheckoutModalBuyContext(product);
+    const source = opts?.source ?? defaults.source;
+    const view = opts?.view ?? defaults.view;
+    const placement = normalizeRetailerPlacement(opts?.placement, defaults.placement);
+    const purchaseUrl = getResolvedPurchaseUrl(product, opts?.purchaseUrl);
+
+    if (!purchaseUrl) return null;
+
+    return {
+      product,
+      source,
+      view,
+      placement,
+      purchaseUrl,
+      includeCheckoutOpen: opts?.includeCheckoutOpen ?? shouldIncludeCheckoutOpen(source, view),
+      skipPostBuyPrompt: opts?.skipPostBuyPrompt,
+    };
+  };
+
+  function openConfirm(intent: PendingBuyIntent) {
+    const { product } = intent;
     const isReturning = hasSavedLeadEmail;
     const sessionId = Firestore.getOrCreateSessionId();
     const variant: ConfirmVariant = isReturning ? "A" : variantFromSessionId(sessionId);
 
-    setPendingBuy(p);
+    setPendingBuy(product);
+    setPendingBuyIntent(intent);
     setConfirmVariant(variant);
-    setLastBuyProduct(p);
+    setLastBuyProduct(product);
 
     void Firestore.logEvent({
       type: "view_change",
       view: "checkout",
       source: "cart_confirm",
-      productId: p.id,
+      productId: product.id,
       meta: {
         panel: "cart_confirm_card_shown",
         preferRetailer: isReturning ? 1 : 0,
         variant,
       },
-    }).catch(console.warn);
+    }).catch(() => {});
   }
 
   useEffect(() => {
@@ -261,49 +333,31 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
   async function handleBuy(
     product: Product,
-    sourceOverride?: CheckoutLinksModalProps["leadSource"],
-    opts?: { skipPostBuyPrompt?: boolean; bypassConfirmGate?: boolean }
+    opts?: BuyIntentOverrides
   ) {
-    const url = getPurchaseUrl(product);
-    if (!url) return;
+    const intent = resolveBuyIntent(product, opts);
+    if (!intent) {
+      showActionToast("This product link isn't available right now.");
+      return;
+    }
 
     if (!opts?.bypassConfirmGate && !hasSavedLeadEmail && !confirmInterceptedRef.current) {
       confirmInterceptedRef.current = true;
-      openConfirm(product);
+      openConfirm(intent);
       return;
     }
 
     setLastBuyProduct(product);
 
-    // Open outbound immediately
-    window.open(url, "_blank", "noopener,noreferrer");
+    onOpenRetailerLink(product, {
+      source: intent.source,
+      view: intent.view,
+      placement: intent.placement,
+      purchaseUrl: intent.purchaseUrl,
+      includeCheckoutOpen: intent.includeCheckoutOpen,
+    });
 
-    void Firestore.logEvent({
-      type: "checkout_item_open",
-      view: "checkout",
-      source: sourceOverride ?? "cart_confirm",
-      productId: product.id,
-      purchaseUrl: url,
-      meta: {
-        category: product.category ?? "",
-        price: Number(product.price ?? 0),
-      },
-    }).catch(console.warn);
-
-    // Log buy_click with clear source
-    void Firestore.logEvent({
-      type: "buy_click",
-      view: "checkout",
-      source: sourceOverride ?? "cart_confirm",
-      productId: product.id,
-      purchaseUrl: url,
-      meta: {
-        category: product.category ?? "",
-        price: Number(product.price ?? 0),
-      },
-    }).catch(console.warn);
-
-    if (opts?.skipPostBuyPrompt) return;
+    if (intent.skipPostBuyPrompt) return;
 
     let saved = false;
     try {
@@ -314,14 +368,14 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       setPostBuyPrompted(true);
 
       if (!saved) {
-        openLeadPanel("post_buy_panel", product.name ?? (product as any).title ?? "this item");
+        openLeadPanel("post_buy_panel", product.name ?? "this item");
       } else {
         void Firestore.logEvent({
           type: "view_change",
           view: "checkout",
           source: "post_buy_panel",
           meta: { panel: "lead_prompt_eligible_saved" },
-        }).catch(console.warn);
+        }).catch(() => {});
       }
     }
   }
@@ -348,11 +402,16 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         preferRetailer: preferRetailer ? 1 : 0,
         variant,
       },
-    }).catch(console.warn);
+    }).catch(() => {});
   };
 
   const onConfirmRetailer = () => {
-    if (!pendingBuy) return;
+    if (!pendingBuy || !pendingBuyIntent) {
+      clearPendingBuyState();
+      return;
+    }
+
+    const intent = pendingBuyIntent;
 
     logPrimaryConfirmChoice("retailer");
 
@@ -366,13 +425,21 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
         preferRetailer: preferRetailer ? 1 : 0,
         variant: preferRetailer ? "A" : confirmVariant,
       },
-    }).catch(console.warn);
+    }).catch(() => {});
 
-    void handleBuy(pendingBuy, "cart_confirm", { bypassConfirmGate: true });
-    setPendingBuy(null);
+    clearPendingBuyState();
+
+    void handleBuy(intent.product, {
+      bypassConfirmGate: true,
+      skipPostBuyPrompt: intent.skipPostBuyPrompt,
+      source: intent.source,
+      view: intent.view,
+      placement: intent.placement,
+      purchaseUrl: intent.purchaseUrl,
+      includeCheckoutOpen: intent.includeCheckoutOpen,
+    });
   };
 
-  // lock body scroll + close on Escape
   useEffect(() => {
     if (!open) return;
 
@@ -380,7 +447,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
     document.body.style.overflow = "hidden";
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") handleClose();
     };
 
     const prevent = (e: TouchEvent) => {
@@ -406,7 +473,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
       <button
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         aria-label="Close"
-        onClick={onClose}
+        onClick={handleClose}
       />
 
       <div
@@ -422,14 +489,20 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
           <div className="px-6 pb-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xl font-extrabold text-slate-900">Checkout links</div>
-                <div className="text-sm text-slate-600 mt-1">
-                  This demo opens product pages (real checkout coming later).
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-sky-500/85">
+                  Review your picks
+                </div>
+                <div className="mt-1 text-xl font-extrabold text-slate-900">
+                  Your room shortlist
+                </div>
+                <div className="mt-1 text-sm text-slate-600">
+                  Compare saved upgrades, review your bag, and open retailer checkout links when
+                  you’re ready.
                 </div>
               </div>
 
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="h-10 w-10 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
                 aria-label="Close"
               >
@@ -438,27 +511,44 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
             </div>
           </div>
 
-          <div className="max-h-[62vh] overflow-y-auto no-scrollbar px-6 pb-6" data-modal-scroll="true">
-            <div className="mt-1 rounded-2xl border border-slate-100 bg-slate-50 p-4 flex justify-between items-center">
-              <div className="text-xs font-black uppercase tracking-widest text-slate-400">Subtotal</div>
-              <div className="text-xl font-black text-slate-900">${subtotal.toFixed(2)}</div>
+          <div
+            className="max-h-[62vh] overflow-y-auto overscroll-contain no-scrollbar px-6 pb-6"
+            data-modal-scroll="true"
+          >
+            <div className="mt-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Bag subtotal
+                  </div>
+                  <div className="mt-1 text-2xl font-black text-slate-900">
+                    {isCheckoutEmpty ? "$0.00" : `$${subtotal.toFixed(2)}`}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {bagCount} in bag • {savedCount} saved
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-right">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Total picks
+                  </div>
+                  <div className="mt-1 text-lg font-black text-slate-900">{totalCount}</div>
+                </div>
+              </div>
             </div>
 
             {pendingBuy && (
-              <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="mt-3 rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-black text-slate-900">
-                      Want this cart + cheaper alternatives emailed?
+                    <div className="font-black text-slate-900">Send this shortlist to your inbox?</div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      Get checkout links, saved picks, and price-drop alerts in one place.
                     </div>
-                    <div className="text-sm text-slate-600 mt-1">
-                      We’ll send links + price drops. No spam.
+                    <div className="mt-2 text-xs text-slate-600">
+                      One email now makes future checkout 1-tap.
                     </div>
-                    {!preferRetailer && confirmVariant === "B" ? (
-                      <div className="mt-2 text-xs text-slate-600">
-                        Instant links to your cart + price-drop alerts.
-                      </div>
-                    ) : null}
                   </div>
 
                   <button
@@ -475,8 +565,8 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                           preferRetailer: preferRetailer ? 1 : 0,
                           variant: preferRetailer ? "A" : confirmVariant,
                         },
-                      }).catch(console.warn);
-                      setPendingBuy(null);
+                      }).catch(() => {});
+                      clearPendingBuyState();
                     }}
                     className="h-9 w-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
                     aria-label="Dismiss"
@@ -503,12 +593,12 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                               preferRetailer: preferRetailer ? 1 : 0,
                               variant: preferRetailer ? "A" : confirmVariant,
                             },
-                          }).catch(console.warn);
+                          }).catch(() => {});
                           openLeadPanel("cart_confirm");
                         }}
                         className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
                       >
-                        Email me links
+                        Send me links
                       </button>
 
                       <button
@@ -543,28 +633,31 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                               preferRetailer: preferRetailer ? 1 : 0,
                               variant: preferRetailer ? "A" : confirmVariant,
                             },
-                          }).catch(console.warn);
+                          }).catch(() => {});
                           openLeadPanel("cart_confirm");
                         }}
                         className="h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold active:scale-95 transition"
                       >
-                        Email me links
+                        Send me links
                       </button>
                     </>
                   )}
                 </div>
 
                 <div className="mt-3 text-[11px] text-slate-400 leading-snug">
-                  Tip: If you drop your email once, it becomes 1-tap next time.
+                  Tip: Save your email once and future checkout becomes 1-tap.
                 </div>
               </div>
             )}
 
             {postBuyLeadOpen ? (
               leadStatus === "saved" ? (
-                <div data-lead-panel="1" className={`mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}>
+                <div
+                  data-lead-panel="1"
+                  className={`mt-4 rounded-[1.5rem] border border-emerald-100 bg-emerald-50 p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}
+                >
                   <div className="font-black text-emerald-700">Alerts enabled ✅</div>
-                  <div className="text-sm text-emerald-700/80 mt-1">
+                  <div className="mt-1 text-sm text-emerald-700/80">
                     We’ll email you if this item drops in price or a close alternative is cheaper.
                   </div>
 
@@ -573,8 +666,15 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     onClick={() => {
                       const p = pendingBuy ?? lastBuyProduct;
                       if (!p) return;
-                      void handleBuy(p, leadSourceRef.current, { skipPostBuyPrompt: true, bypassConfirmGate: true });
-                      setPendingBuy(null);
+                      const leadBuyIntent = getLeadBuyIntent(leadSourceRef.current);
+                      void handleBuy(p, {
+                        skipPostBuyPrompt: true,
+                        bypassConfirmGate: true,
+                        source: leadBuyIntent.source,
+                        view: leadBuyIntent.view,
+                        placement: leadBuyIntent.placement,
+                      });
+                      clearPendingBuyState();
                       setPostBuyLeadOpen(false);
                     }}
                     className="mt-3 w-full h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold flex items-center justify-center gap-1 active:scale-95 transition"
@@ -583,18 +683,20 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   </button>
                 </div>
               ) : (
-                <div data-lead-panel="1" className={`mt-4 bg-slate-50 border border-slate-200 rounded-2xl p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}>
-                  <div className="font-black text-slate-900">
-                    Email me my cart links + price drops
-                  </div>
-                  <div className="text-sm text-slate-600 mt-1">
-                    Includes {leadSource === "roomscan" ? "these picks" : (lastBoughtName || "this item")} plus cheaper alternatives.
+                <div
+                  data-lead-panel="1"
+                  className={`mt-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}
+                >
+                  <div className="font-black text-slate-900">Send my checkout links</div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    Includes {leadSource === "roomscan" ? "these picks" : lastBoughtName || "this item"} plus
+                    saved upgrades and price-drop alerts.
                   </div>
 
                   {leadEmail?.trim() ? (
                     <div className="mt-3 text-xs text-slate-600 flex items-center justify-between gap-2">
                       <div>
-                        Sending alerts to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
+                        Sending to <span className="font-extrabold text-slate-900">{leadEmail.trim()}</span>
                       </div>
                       <button
                         type="button"
@@ -614,7 +716,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                     />
                   )}
 
-                  {leadError && <div className="text-rose-600 text-sm font-bold mt-2">{leadError}</div>}
+                  {leadError ? (
+                    <div className="mt-2 text-rose-600 text-sm font-bold">{leadError}</div>
+                  ) : null}
 
                   <button
                     onClick={() => void handleLeadClick()}
@@ -625,11 +729,11 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       ? "Saving..."
                       : leadEmail?.trim()
                         ? `Send links to ${leadEmail.trim()}`
-                        : "Get alerts"}
+                        : "Send my links"}
                   </button>
 
                   {leadEmail?.trim() ? (
-                    <div className="text-[11px] text-slate-500 mt-2">Receipt + price drops</div>
+                    <div className="text-[11px] text-slate-500 mt-2">Checkout links + price drops</div>
                   ) : null}
 
                   <button
@@ -647,64 +751,169 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
               )
             ) : null}
 
-            {(cart.length > 0 || wishlist.length > 0) && (
+            {isCheckoutEmpty ? (
+              <div className="mt-4 rounded-[1.75rem] border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-5 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-100 bg-orange-50">
+                  <span className="text-2xl">✨</span>
+                </div>
+
+                <div className="mt-4 text-base font-black text-slate-900">
+                  Your shortlist is clear
+                </div>
+
+                <div className="mt-2 text-sm leading-relaxed text-slate-500">
+                  Add more upgrades from Explore, Saved, or RoomScan when you’re ready.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="mt-4 h-11 w-full rounded-2xl bg-slate-900 font-extrabold text-white"
+                >
+                  Back to Explore
+                </button>
+              </div>
+            ) : (
               <div className="mt-4 space-y-3">
                 {cart.length > 0 &&
                   cart.map((p) => (
-                    <div key={p.id} className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3">
-                      <img
-                        src={p.imageUrl}
-                        alt={p.name}
-                        className="w-14 h-14 rounded-xl object-cover bg-slate-100"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-black text-slate-900 truncate">{p.name}</div>
-                        <div className="text-xs text-slate-500 truncate">
-                          {p.brand ?? "Seligo.AI"} • ${Number(p.price ?? 0).toFixed(2)}
+                    <div
+                      key={p.id}
+                      className="rounded-[1.5rem] border border-slate-100 bg-white p-3 shadow-[0_10px_30px_rgba(15,23,42,0.05)]"
+                    >
+                      <div className="flex gap-3">
+                        <img
+                          src={p.imageUrl}
+                          alt={p.name}
+                          className="h-16 w-16 rounded-2xl object-cover bg-slate-100"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
+                            In your bag
+                          </div>
+
+                          <div className="mt-1 truncate font-black text-slate-900">{p.name}</div>
+
+                          <div className="mt-1 text-xs text-slate-500 truncate">
+                            {p.brand ?? "Seligo.AI"} • ${Number(p.price ?? 0).toFixed(2)}
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => {
+                                handleClose();
+                                onOpenProduct?.(p);
+                              }}
+                              className="h-10 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700"
+                            >
+                              View
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setPostBuyLeadOpen(false);
+                                void handleBuy(p);
+                              }}
+                              className="h-10 rounded-xl text-xs font-black text-white active:scale-[0.98] transition"
+                              style={{ background: "var(--seligo-cta)" }}
+                            >
+                              Checkout link ↗
+                            </button>
+                          </div>
+
+                          <div className="mt-2 flex items-center gap-3 text-[11px] font-bold">
+                            <button
+                              onClick={() => {
+                                setPostBuyLeadOpen(false);
+                                onMoveCartItemToSaved(p);
+                              }}
+                              className="text-slate-500 hover:text-slate-800"
+                            >
+                              Move to Saved
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setPostBuyLeadOpen(false);
+                                onRemoveCartItem(p.id);
+                              }}
+                              className="text-slate-400 hover:text-slate-700"
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          setPostBuyLeadOpen(false);
-                          openConfirm(p);
-                        }}
-                        className="shrink-0 px-4 py-2 rounded-xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition flex items-center gap-1"
-                      >
-                        <span>Buy</span>
-                        <span className="opacity-90">↗</span>
-                      </button>
                     </div>
                   ))}
 
                 {wishlist.length > 0 && (
                   <div className="pt-2">
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
+                    <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                       Saved for later
                     </div>
+
                     <div className="space-y-3">
                       {wishlist.map((p) => (
                         <div
                           key={`${p.id}-wish`}
-                          className="flex gap-3 items-center border border-slate-100 rounded-2xl p-3 opacity-80"
+                          className="rounded-[1.5rem] border border-slate-100 bg-white p-3 opacity-95"
                         >
-                          <img
-                            src={p.imageUrl}
-                            alt={p.name}
-                            className="w-12 h-12 rounded-xl object-cover bg-slate-100"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                            <div className="text-xs text-slate-500 truncate">${Number(p.price ?? 0).toFixed(2)}</div>
+                          <div className="flex gap-3">
+                            <img
+                              src={p.imageUrl}
+                              alt={p.name}
+                              className="h-14 w-14 rounded-2xl object-cover bg-slate-100"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">
+                                Saved upgrade
+                              </div>
+
+                              <div className="mt-1 truncate font-black text-slate-900">{p.name}</div>
+
+                              <div className="mt-1 text-xs text-slate-500 truncate">
+                                ${Number(p.price ?? 0).toFixed(2)}
+                              </div>
+
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => {
+                                    handleClose();
+                                    onOpenProduct?.(p);
+                                  }}
+                                  className="h-10 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700"
+                                >
+                                  View
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setPostBuyLeadOpen(false);
+                                    onMoveSavedItemToBag(p);
+                                  }}
+                                  className="h-10 rounded-xl text-xs font-black text-white active:scale-[0.98] transition"
+                                  style={{ background: "var(--seligo-cta)" }}
+                                >
+                                  Move to Bag
+                                </button>
+                              </div>
+
+                              <div className="mt-2 flex items-center gap-3 text-[11px] font-bold">
+                                <button
+                                  onClick={() => {
+                                    setPostBuyLeadOpen(false);
+                                    onRemoveSavedItem(p.id);
+                                  }}
+                                  className="text-slate-400 hover:text-slate-700"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <button
-                            onClick={() => {
-                              onClose();
-                              onOpenProduct?.(p);
-                            }}
-                            className="shrink-0 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-widest hover:bg-slate-200"
-                          >
-                            Open
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -715,28 +924,17 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
             <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-4">
               <div className="text-[11px] text-slate-500 leading-relaxed">
-                Seligo may earn a commission if you buy through links. Links may become affiliate links later.
+                {AFFILIATE_DISCLOSURE_TEXT}
               </div>
+
               <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400">
-                <button
-                  type="button"
-                  onClick={onPrivacy}
-                  className="hover:text-slate-600"
-                >
+                <button type="button" onClick={onPrivacy} className="hover:text-slate-600">
                   Privacy
                 </button>
-                <button
-                  type="button"
-                  onClick={onTerms}
-                  className="hover:text-slate-600"
-                >
+                <button type="button" onClick={onTerms} className="hover:text-slate-600">
                   Terms
                 </button>
-                <button
-                  type="button"
-                  onClick={onDisclosure}
-                  className="hover:text-slate-600"
-                >
+                <button type="button" onClick={onDisclosure} className="hover:text-slate-600">
                   Disclosure
                 </button>
               </div>
@@ -747,16 +945,21 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
             className="sticky bottom-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-6 pt-4"
             style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
           >
+            <div className="mb-3 text-center text-[11px] leading-relaxed text-slate-400">
+              {AFFILIATE_DISCLOSURE_TEXT}
+            </div>
+
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-full h-12 rounded-2xl bg-slate-900 text-white font-extrabold"
             >
-              Back to browsing
+              {isCheckoutEmpty ? "Back to Explore" : "Keep Exploring"}
             </button>
           </div>
         </div>
       </div>
     </div>
   );
-}
+};
+
 export default CheckoutLinksModal;

@@ -20,6 +20,7 @@ export default function InterestsPage({
   onRoomScan,
 }: InterestsPageProps) {
   const [selected, setSelected] = useState<string[]>(initialSelectedIds);
+  const hasSelections = selected.length > 0;
 
   const toggleCategory = (id: string) => {
     setSelected((prev) =>
@@ -28,26 +29,24 @@ export default function InterestsPage({
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.14),_transparent_38%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] px-5 pt-6 pb-24 sm:px-6">
-      <div className="mx-auto max-w-xl">
-        <div className="rounded-[2rem] border border-white/80 bg-white/90 px-5 py-6 shadow-[0_32px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur sm:px-7 sm:py-7">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-slate-50/90 px-3 py-1.5 shadow-sm">
-            <span className="text-sm">✨</span>
-            <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-              {onboardingCopy.interestsEyebrow}
-            </span>
+    <div className="min-h-screen bg-[#EEF2F7] px-4 pt-5 pb-8">
+      <div className="mx-auto w-full max-w-[560px]">
+        <div className="rounded-[30px] bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:p-6">
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <span className="mr-2">✨</span>
+            <span>{onboardingCopy.interestsEyebrow}</span>
           </div>
 
-          <h1 className="mt-5 max-w-[10ch] text-[2.65rem] font-black leading-[0.9] tracking-[-0.05em] text-slate-950 sm:text-[3.35rem]">
+          <h1 className="mt-4 max-w-[320px] text-[40px] font-black leading-[0.92] tracking-[-0.045em] text-slate-950 sm:max-w-[380px] sm:text-[50px]">
             {onboardingCopy.interestsTitle}
           </h1>
 
-          <p className="mt-3 max-w-[33ch] text-[15px] leading-6 text-slate-600 sm:text-base">
+          <p className="mt-3 max-w-[340px] text-[16px] leading-7 text-slate-600 sm:text-[17px]">
             {onboardingCopy.interestsSubtitle}
           </p>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-3.5 grid grid-cols-2 gap-3">
           {VIBE_CATEGORIES.map((category) => {
             const isActive = selected.includes(category.id);
             const interestLabel =
@@ -60,22 +59,33 @@ export default function InterestsPage({
               <button
                 key={category.id}
                 type="button"
+                aria-pressed={isActive}
                 onClick={() => toggleCategory(category.id)}
-                className={`rounded-[1.75rem] border px-5 py-5 text-left transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
+                className={`relative min-h-[144px] rounded-[24px] p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
                   isActive
-                    ? "border-slate-950 bg-slate-950 text-white shadow-[0_28px_64px_-36px_rgba(15,23,42,0.9)]"
-                    : "border-white/70 bg-white/90 text-slate-900 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] hover:-translate-y-0.5 hover:shadow-[0_28px_64px_-34px_rgba(15,23,42,0.42)]"
+                    ? "bg-sky-50 ring-2 ring-sky-500 shadow-[0_16px_36px_rgba(14,165,233,0.14)]"
+                    : "bg-white ring-1 ring-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.05)] hover:-translate-y-[1px] hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
                 }`}
               >
-                <div className="text-3xl">{category.emoji}</div>
+                <div className="flex items-start justify-between">
+                  <div className="text-[25px] leading-none">{category.emoji}</div>
 
-                <div className="mt-4 text-lg font-black">{interestLabel}</div>
+                  <div
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold transition ${
+                      isActive
+                        ? "bg-sky-500 text-white shadow"
+                        : "bg-slate-100 text-transparent"
+                    }`}
+                  >
+                    ✓
+                  </div>
+                </div>
 
-                <div
-                  className={`mt-1 text-sm leading-6 ${
-                    isActive ? "text-white/80" : "text-slate-500"
-                  }`}
-                >
+                <div className="mt-5 text-[15px] font-extrabold tracking-[-0.02em] text-slate-950 sm:text-[16px]">
+                  {interestLabel}
+                </div>
+
+                <div className="mt-2 pr-1 text-[13px] leading-5 text-slate-500 sm:text-[14px]">
                   {interestDescription}
                 </div>
               </button>
@@ -83,35 +93,52 @@ export default function InterestsPage({
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={() => void onContinue?.(selected)}
-          className="mt-8 flex h-15 w-full items-center justify-center gap-2 rounded-[1.75rem] bg-slate-950 px-5 text-[15px] font-black tracking-[0.01em] text-white shadow-[0_28px_72px_-32px_rgba(15,23,42,0.75)] ring-1 ring-slate-950/10 transition duration-200 active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
-          disabled={selected.length === 0 || isLoading}
-        >
-          <span>
-            {isLoading
-              ? onboardingCopy.interestsLoadingCta
-              : onboardingCopy.interestsCta}
-          </span>
-          {!isLoading ? <ArrowRight className="h-4 w-4" /> : null}
-        </button>
+        <div className="sticky bottom-0 z-10 mt-4 bg-gradient-to-t from-[#EEF2F7] via-[#EEF2F7]/95 to-transparent pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-[2px]">
+          <div className="mb-2 flex items-center justify-between px-1 text-[13px] font-semibold text-slate-500">
+            <span>
+              {hasSelections
+                ? `${selected.length} selected`
+                : "Choose a few to personalize your feed"}
+            </span>
+          </div>
 
-        <div className="mt-4 flex items-center justify-between px-1 text-sm">
           <button
             type="button"
-            onClick={onHowItWorks}
-            className="font-semibold text-slate-700 transition hover:text-slate-950"
+            onClick={() => void onContinue?.(selected)}
+            className={`group w-full rounded-full px-5 py-4 text-[16px] font-black tracking-[-0.02em] transition-all duration-200 ${
+              hasSelections && !isLoading
+                ? "bg-[var(--seligo-cta)] text-white shadow-[0_18px_40px_rgba(251,146,60,0.30)] hover:-translate-y-[1px] hover:shadow-[0_22px_44px_rgba(251,146,60,0.38)] hover:brightness-[1.03] active:scale-[0.99]"
+                : "cursor-not-allowed bg-slate-300 text-slate-500"
+            }`}
+            disabled={!hasSelections || isLoading}
           >
-            {onboardingCopy.interestsHowItWorksCta}
+            <span className="inline-flex items-center gap-2">
+              {isLoading
+                ? onboardingCopy.interestsLoadingCta
+                : onboardingCopy.interestsCta}
+              {!isLoading ? (
+                <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+              ) : null}
+            </span>
           </button>
-          <button
-            type="button"
-            onClick={onRoomScan}
-            className="font-semibold text-slate-500 transition hover:text-slate-900"
-          >
-            {onboardingCopy.interestsRoomScanCta}
-          </button>
+
+          <div className="mt-3 flex items-center justify-between px-1 text-[14px] font-semibold text-slate-600">
+            <button
+              type="button"
+              onClick={onHowItWorks}
+              className="transition hover:text-slate-950"
+            >
+              {onboardingCopy.interestsHowItWorksCta}
+            </button>
+
+            <button
+              type="button"
+              onClick={onRoomScan}
+              className="transition hover:text-slate-950"
+            >
+              {onboardingCopy.interestsRoomScanCta}
+            </button>
+          </div>
         </div>
       </div>
     </div>

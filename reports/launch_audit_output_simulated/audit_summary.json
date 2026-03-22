@@ -1,0 +1,15 @@
+{
+  "inputPath": "/Users/davidkarelin/Downloads/swipeshop---ai-discovery (1)/reports/launch_products_34.json",
+  "amazonTagConfigured": true,
+  "amazonTagSource": "--real-amazon-tag",
+  "total": 34,
+  "ok": 0,
+  "review": 34,
+  "fail": 0,
+  "topNotes": [
+    {
+      "note": "Amazon affiliate tag missing, placeholder, or not equal to configured production tag",
+      "count": 34
+    }
+  ]
+}

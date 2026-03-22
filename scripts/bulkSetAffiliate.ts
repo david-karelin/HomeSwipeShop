@@ -1,7 +1,19 @@
 import admin from "firebase-admin";
+import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { resolveNodeAmazonAssocTag } from "../src/lib/affiliateConfig";
+
+function loadDotenvFiles() {
+  for (const fileName of [".env.local", ".env"]) {
+    const filePath = path.join(process.cwd(), fileName);
+    if (!fs.existsSync(filePath)) continue;
+    dotenv.config({ path: filePath, override: false });
+  }
+}
+
+loadDotenvFiles();
 
 // Load service account key (DO NOT COMMIT THIS FILE)
 const keyPath = path.join(process.cwd(), "scripts", "serviceAccountKey.json");
@@ -14,7 +26,7 @@ if (!admin.apps.length) {
 }
 
 const db = getFirestore();
-const TAG = process.env.AMAZON_ASSOC_TAG || process.env.VITE_AMAZON_ASSOC_TAG || "";
+const TAG = resolveNodeAmazonAssocTag().value;
 
 function amazonSearchUrl(query: string) {
   const q = encodeURIComponent(query.trim().replace(/\s+/g, " "));

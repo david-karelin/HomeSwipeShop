@@ -33,6 +33,60 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
       }
+      @keyframes seligo-pop-in {
+        0% {
+          opacity: 0;
+          transform: scale(0.82) translateY(8px);
+        }
+        70% {
+          opacity: 1;
+          transform: scale(1.04) translateY(0);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes seligo-float {
+        0%, 100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-4px);
+        }
+      }
+      @keyframes seligo-flash-save {
+        0% {
+          opacity: 0;
+          transform: scale(0.8) translateY(6px);
+        }
+        20% {
+          opacity: 1;
+          transform: scale(1.06) translateY(0);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1) translateY(-8px);
+        }
+      }
+      @keyframes seligo-pulse-ring {
+        0% {
+          opacity: 0.35;
+          transform: scale(0.94);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.08);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
     </style>
   <script type="importmap">
 {

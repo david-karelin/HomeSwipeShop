@@ -1,4 +1,5 @@
 import { SWIPE_FEED_RULES } from "../constants";
+import { logDiscoveryDebug } from "./debug";
 
 const SMALL_CURATED_POOL_THRESHOLD = 18;
 
@@ -328,14 +329,14 @@ export function prioritizeMainFeedInventory<T extends FeedProduct>(
     (product) => isCuratedFeedProduct(product) && product.imageApproved === true
   );
 
-  console.log("curatedApproved.length", curatedApproved.length);
+  logDiscoveryDebug("curatedApproved.length", curatedApproved.length);
 
   if (curatedApproved.length === 0) {
     return diversifySwipeFeed(products, opts);
   }
 
   if (curatedApproved.length < SMALL_CURATED_POOL_THRESHOLD) {
-    console.log("small curated pool detected - skipping diversity");
+    logDiscoveryDebug("small curated pool detected - skipping diversity");
     return products;
   }
 

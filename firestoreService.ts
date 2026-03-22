@@ -26,6 +26,8 @@ import {
 } from "firebase/auth";
 import { auth, db } from "./firebase";
 import { INTEREST_QUERY_TAGS, SWIPE_FEED_RULES, normalizeInterestIds } from "./src/constants";
+import { logDiscoveryDebug } from "./src/lib/debug";
+import { filterLaunchCatalogProducts } from "./src/lib/launchCatalog";
 import type { CanonicalCategory, PrimaryType, Product } from "./types";
 
 export { db, auth };
@@ -285,9 +287,11 @@ function isIndexFallbackError(error: unknown) {
 }
 
 function normalizeProductsFromDocs(docs: Array<{ id: string; data(): any }>) {
-  return docs
-    .map((docSnap) => normalizeProduct(docSnap.id, docSnap.data()))
-    .filter((product) => product.active !== false && product.swipeEligible !== false);
+  return filterLaunchCatalogProducts(
+    docs
+      .map((docSnap) => normalizeProduct(docSnap.id, docSnap.data()))
+      .filter((product) => product.active !== false && product.swipeEligible !== false)
+  );
 }
 
 function normalizeApprovedProductsFromDocs(docs: Array<{ id: string; data(): any }>) {
@@ -597,9 +601,7 @@ function expandInterestTags(interests: string[]) {
 // Load products (tries to match tags with your selected interests)
 export async function fetchProductsByInterests(interests: string[], take = 20): Promise<Product[]> {
   const queryTags = expandInterestTags(interests);
-  if (import.meta.env.DEV) {
-    console.log("expanded query tags snapshot", JSON.stringify(queryTags));
-  }
+  logDiscoveryDebug("expanded query tags snapshot", JSON.stringify(queryTags));
 
   const col = collection(db, "products");
 
@@ -637,9 +639,7 @@ export async function fetchProductsByInterests(interests: string[], take = 20): 
 
 export async function fetchCuratedProductsByInterests(interests: string[], take = 60): Promise<Product[]> {
   const queryTags = expandInterestTags(interests);
-  if (import.meta.env.DEV) {
-    console.log("expanded query tags snapshot", JSON.stringify(queryTags));
-  }
+  logDiscoveryDebug("expanded query tags snapshot", JSON.stringify(queryTags));
   const col = collection(db, "products");
   try {
     const q = query(
@@ -652,8 +652,8 @@ export async function fetchCuratedProductsByInterests(interests: string[], take 
       limit(Math.max(take, 120))
     );
     const snap = await getDocs(q);
-    console.log("curated snap.docs.length", snap.docs.length);
-    console.log(
+    logDiscoveryDebug("curated snap.docs.length", snap.docs.length);
+    logDiscoveryDebug(
       "curated raw docs snapshot",
       snap.docs.slice(0, 5).map((d) => ({
         id: d.id,
@@ -671,11 +671,19 @@ export async function fetchCuratedProductsByInterests(interests: string[], take 
     );
 
     const normalized = normalizeApprovedProductsFromDocs(snap.docs);
-    console.log("curated normalized length", normalized.length);
+    logDiscoveryDebug("curated normalized length", normalized.length);
 
-    const items = sliceInterestMatches(normalized, queryTags, take);
-    console.log("curated sliced length", items.length);
-    console.log(
+    const matched = sliceInterestMatches(normalized, queryTags, take);
+    const items = matched.length >= take
+      ? matched
+      : [
+          ...matched,
+          ...normalized
+            .filter((product) => !matched.some((candidate) => candidate.id === product.id))
+            .slice(0, take - matched.length),
+        ];
+    logDiscoveryDebug("curated sliced length", items.length);
+    logDiscoveryDebug(
       "curated sliced snapshot",
       items.slice(0, 5).map((p) => ({
         id: p.id,
@@ -689,13 +697,13 @@ export async function fetchCuratedProductsByInterests(interests: string[], take 
     if (items.length > 0) return items;
 
     const loose = await fetchLooseInterestMatches(queryTags, take, { curatedOnly: true });
-    console.log("curated loose fallback length", loose.length);
+    logDiscoveryDebug("curated loose fallback length", loose.length);
     return loose;
   } catch (error) {
     if (!isIndexFallbackError(error)) throw error;
 
     const loose = await fetchLooseInterestMatches(queryTags, take, { curatedOnly: true });
-    console.log("curated loose fallback length after index fallback", loose.length);
+    logDiscoveryDebug("curated loose fallback length after index fallback", loose.length);
     return loose;
   }
 }
@@ -794,9 +802,7 @@ export async function fetchProductsByInterestsPage(
   cursor: QueryDocumentSnapshot<DocumentData> | null = null
 ): Promise<ProductsPage> {
   const queryTags = expandInterestTags(interests);
-  if (import.meta.env.DEV) {
-    console.log("expanded query tags snapshot", JSON.stringify(queryTags));
-  }
+  logDiscoveryDebug("expanded query tags snapshot", JSON.stringify(queryTags));
   const col = collection(db, "products");
 
   // if no interests, fallback to normal paging
@@ -1018,11 +1024,14 @@ type EventType =
   | "checkout_item_open"
   | "lead_submit"
   | "wishlist_add"
+  | "wishlist_remove"
   | "cart_add"
+  | "cart_remove"
   | "session_start"
   | "view_change"
   | "scan_start"
   | "scan_success"
+  | "scan_fail"
   | "scan_apply"
   | "pick_save"
   | "pick_impression"
@@ -1156,13 +1165,5 @@ export async function logEvent(payload: {
   } catch (e) {
     console.warn("[logEvent] addDoc failed", e, base);
   }
-}
-
-export async function logBuyClick(payload: {
-  productId: string;
-  purchaseUrl: string;
-  source?: string;
-}) {
-  return logEvent({ type: "buy_click", ...payload, source: payload.source ?? "checkout_modal" });
 }
 

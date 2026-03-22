@@ -1,6 +1,5 @@
-import * as tf from "@tensorflow/tfjs";
-import * as cocoSsd from "@tensorflow-models/coco-ssd";
-import * as mobilenet from "@tensorflow-models/mobilenet";
+import { getRoomScanModels } from "./roomScanModels";
+export { preloadRoomScanModels } from "./roomScanModels";
 
 export type RoomScanAnalysis = {
   roomType: string | null;
@@ -12,51 +11,6 @@ export type RoomScanAnalysis = {
   productIdeas?: Array<{ title: string; category: string; searchKeywords: string[]; why: string }>;
   debug?: any;
 };
-
-let cocoModel: cocoSsd.ObjectDetection | null = null;
-let mobileModel: mobilenet.MobileNet | null = null;
-let modelsPromise: Promise<void> | null = null;
-
-async function loadModels() {
-  if (modelsPromise) return modelsPromise;
-
-  modelsPromise = (async () => {
-    await tf.setBackend("webgl").catch(() => tf.setBackend("cpu"));
-    await tf.ready();
-
-    if (!cocoModel) {
-      console.log("[RoomScan] loading coco...");
-      cocoModel = await cocoSsd.load({
-        base: "lite_mobilenet_v2",
-        modelUrl: "/tfjs/coco-ssd/model.json",
-      });
-      console.log("[RoomScan] coco loaded ✅");
-    }
-
-    if (!mobileModel) {
-      try {
-        console.log("[RoomScan] loading mobilenet...");
-        mobileModel = await mobilenet.load({
-          version: 1,
-          alpha: 1.0,
-        });
-        console.log("[RoomScan] mobilenet loaded ✅");
-      } catch (e) {
-        console.warn("[RoomScan] mobilenet failed (continuing without it):", e);
-        mobileModel = null;
-      }
-    }
-  })().catch((e) => {
-    modelsPromise = null;
-    throw e;
-  });
-
-  return modelsPromise;
-}
-
-export async function preloadRoomScanModels() {
-  await loadModels();
-}
 
 function downscaleToCanvas(file: File, maxSide = 640): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
@@ -228,7 +182,7 @@ function buildProductIdeas(
 }
 
 export async function analyzeRoomLocally(file: File | null, roomText: string): Promise<RoomScanAnalysis> {
-  await loadModels();
+  const { cocoModel, mobileModel } = await getRoomScanModels();
 
   const text = (roomText || "").toLowerCase();
   const avoidTags: string[] = [];
@@ -243,7 +197,7 @@ export async function analyzeRoomLocally(file: File | null, roomText: string): P
     const canvas = await downscaleToCanvas(file);
     palette = extractPalette(canvas);
 
-    const preds = await cocoModel!.detect(canvas);
+    const preds = await cocoModel.detect(canvas);
     objects = preds
       .filter((p) => (p.score ?? 0) >= 0.45)
       .map((p) => p.class);

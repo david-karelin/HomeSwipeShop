@@ -1,0 +1,43 @@
+{
+  "inputPath": "/Users/davidkarelin/Downloads/swipeshop---ai-discovery (1)/reports/live_products_export.json",
+  "amazonTagConfigured": false,
+  "amazonTagSource": "default-placeholder",
+  "total": 498,
+  "ok": 0,
+  "review": 498,
+  "fail": 0,
+  "topNotes": [
+    {
+      "note": "Amazon affiliate tag missing, placeholder, or not equal to configured production tag",
+      "count": 498
+    },
+    {
+      "note": "Missing Amazon affiliate tag",
+      "count": 477
+    },
+    {
+      "note": "imageApproved is false",
+      "count": 464
+    },
+    {
+      "note": "isCurated is false",
+      "count": 464
+    },
+    {
+      "note": "Brand looks placeholder/internal and should be verified",
+      "count": 464
+    },
+    {
+      "note": "imageUrl domain does not match merchant domain",
+      "count": 463
+    },
+    {
+      "note": "swipeEligible is false",
+      "count": 457
+    },
+    {
+      "note": "Missing ASIN for Amazon product",
+      "count": 443
+    }
+  ]
+}

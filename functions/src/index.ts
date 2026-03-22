@@ -81,6 +81,7 @@ function pickPurchaseUrl(p: Record<string, any>): string | null {
 
 function buildRoomscanEmail(opts: {
   products: Array<{ id: string; name: string; imageUrl: string; price: number; url?: string | null }>;
+  kind?: "roomscan" | "cart" | "generic";
   heading?: string;
   intro?: string;
   sid?: string;
@@ -88,6 +89,7 @@ function buildRoomscanEmail(opts: {
   const heading = opts.heading ?? "Your Seligo picks";
   const intro = opts.intro ?? "Here are your links:";
   const prods = opts.products ?? [];
+  const kind = opts.kind ?? "generic";
 
   const itemsHtml = prods
     .map((p) => {
@@ -115,7 +117,7 @@ function buildRoomscanEmail(opts: {
     })
     .join("");
 
-  const isCart = heading.toLowerCase().includes("cart");
+  const isCart = kind === "cart";
   const campaign = isCart ? "cart_links" : "roomscan_picks";
   const sid = opts.sid ? encodeURIComponent(opts.sid) : "";
   const appQuery = isCart ? "?view=cart&open=checkout" : "?open=roomscan";
@@ -129,7 +131,7 @@ function buildRoomscanEmail(opts: {
   const cta = `
     <div style="margin-top:32px; padding-top:20px; border-top:1px solid #e2e8f0;">
       <a href="${appUrl}" style="display:inline-block; padding:12px 16px; border-radius:14px; background:#0EA5E9; color:#fff; font-weight:900; text-decoration:none;">
-        See more picks →
+        ${isCart ? "Review checkout links →" : "See more picks →"}
       </a>
       <div style="height:12px; line-height:12px;">&nbsp;</div>
     </div>
@@ -157,7 +159,7 @@ function buildRoomscanEmail(opts: {
   `;
 
   const textLines = prods.map((p) => `- ${p.name} ($${Number(p.price ?? 0).toFixed(2)}) ${p.url ?? ""}`);
-  const text = `${heading}\n\n${intro}\n\n${textLines.join("\n")}\n\nSee more picks: ${appUrl}\n`;
+  const text = `${heading}\n\n${intro}\n\n${textLines.join("\n")}\n\n${isCart ? "Review checkout links" : "See more picks"}: ${appUrl}\n`;
 
   return {html, text};
 }
@@ -326,14 +328,14 @@ export const sendLeadEmail = onDocumentCreated(
         kind === "roomscan" ?
           "Your Seligo room picks" :
           kind === "cart" ?
-            "Your Seligo cart links" :
+            "Your Seligo checkout links" :
             "Your Seligo links";
 
       const intro =
         kind === "roomscan" ?
           "Here are your top picks — plus you’ll get alerts if prices drop or close alternatives are cheaper." :
           kind === "cart" ?
-            "Here are your saved cart items — plus you’ll get alerts if prices drop or close alternatives are cheaper." :
+            "Here are the items from your bag — plus you’ll get alerts if prices drop or close alternatives are cheaper." :
             "";
 
       const subject = heading;
@@ -384,6 +386,7 @@ export const sendLeadEmail = onDocumentCreated(
 
         ({html, text} = buildRoomscanEmail({
           products,
+          kind,
           heading,
           intro,
           sid,

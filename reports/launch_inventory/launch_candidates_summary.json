@@ -1,0 +1,169 @@
+{
+  "inputPath": "/Users/davidkarelin/Downloads/swipeshop---ai-discovery (1)/reports/live_products_export.json",
+  "totalProducts": 498,
+  "launchCandidates": 34,
+  "placeholderRows": 464,
+  "nonPlaceholderRows": 34,
+  "sampleLaunchCandidates": [
+    {
+      "id": "amazon_B0D47BFZ2G",
+      "title": "Bwodke Framed Neutral Abstract Wall Art Set",
+      "merchant": "Amazon.ca",
+      "asin": "B0D47BFZ2G",
+      "price": 19.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0D47BFZ2G"
+    },
+    {
+      "id": "amazon_B0BQ3N3HS1",
+      "title": "CEMABT Ceramic Body Face Vase",
+      "merchant": "Amazon.ca",
+      "asin": "B0BQ3N3HS1",
+      "price": 18.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0BQ3N3HS1"
+    },
+    {
+      "id": "amazon_B09TZKJ5BG",
+      "title": "CEMABT Donut Ceramic Vase",
+      "merchant": "Amazon.ca",
+      "asin": "B09TZKJ5BG",
+      "price": 16.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B09TZKJ5BG"
+    },
+    {
+      "id": "amazon_B0CDLP9SQ3",
+      "title": "CEREMONY Wooden Incense Holder with Glass Ash Catcher",
+      "merchant": "Amazon.ca",
+      "asin": "B0CDLP9SQ3",
+      "price": 23.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0CDLP9SQ3"
+    },
+    {
+      "id": "amazon_B0848JGM78",
+      "title": "COCODOR Flower Reed Diffuser Set White Jasmine",
+      "merchant": "Amazon.ca",
+      "asin": "B0848JGM78",
+      "price": 27.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0848JGM78"
+    },
+    {
+      "id": "amazon_B06ZYH411W",
+      "title": "Command Display Floating Wall Shelves Set",
+      "merchant": "Amazon.ca",
+      "asin": "B06ZYH411W",
+      "price": 25.02,
+      "purchaseUrl": "https://www.amazon.ca/dp/B06ZYH411W"
+    },
+    {
+      "id": "amazon_B07Y5HTRVD",
+      "title": "Dahey Gold Hanging Round Wall Mirror",
+      "merchant": "Amazon.ca",
+      "asin": "B07Y5HTRVD",
+      "price": 22.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B07Y5HTRVD"
+    },
+    {
+      "id": "amazon_B0CXXD2TFZ",
+      "title": "Der Rose 2-Piece Faux Hanging Plant Set",
+      "merchant": "Amazon.ca",
+      "asin": "B0CXXD2TFZ",
+      "price": 26.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0CXXD2TFZ"
+    },
+    {
+      "id": "amazon_B0BZ8DZV6D",
+      "title": "Der Rose 3-Piece Mini Faux Succulent Set",
+      "merchant": "Amazon.ca",
+      "asin": "B0BZ8DZV6D",
+      "price": 19.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0BZ8DZV6D"
+    },
+    {
+      "id": "amazon_B0F93NDNTM",
+      "title": "EDISHINE 13.4 Inch Wood Table Lamp",
+      "merchant": "Amazon.ca",
+      "asin": "B0F93NDNTM",
+      "price": 33.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0F93NDNTM"
+    },
+    {
+      "id": "amazon_B0BZTT3MKR",
+      "title": "EDISHINE Tripod Table Lamp",
+      "merchant": "Amazon.ca",
+      "asin": "B0BZTT3MKR",
+      "price": 36.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0BZTT3MKR"
+    },
+    {
+      "id": "amazon_B0G8TGGTWG",
+      "title": "Erosebridal Abstract Modern Black Beige Canvas Wall Art Set of 3",
+      "merchant": "Amazon.ca",
+      "asin": "B0G8TGGTWG",
+      "price": 40.79,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0G8TGGTWG"
+    },
+    {
+      "id": "amazon_B0FNN2B414",
+      "title": "ESUNYD Candle Warmer Lamp with Timer",
+      "merchant": "Amazon.ca",
+      "asin": "B0FNN2B414",
+      "price": 26.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0FNN2B414"
+    },
+    {
+      "id": "amazon_B0D93DQZQD",
+      "title": "Hbluefat 2-Tier Desktop Organizer Shelf",
+      "merchant": "Amazon.ca",
+      "asin": "B0D93DQZQD",
+      "price": 36.8,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0D93DQZQD"
+    },
+    {
+      "id": "amazon_B09S8W8HK8",
+      "title": "Hbnlai 3-Bulb Propagation Station",
+      "merchant": "Amazon.ca",
+      "asin": "B09S8W8HK8",
+      "price": 19.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B09S8W8HK8"
+    },
+    {
+      "id": "amazon_B0D5HWK1XD",
+      "title": "HERCHR Bedside Table Lamp",
+      "merchant": "Amazon.ca",
+      "asin": "B0D5HWK1XD",
+      "price": 22.39,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0D5HWK1XD"
+    },
+    {
+      "id": "amazon_B0CSXLCL45",
+      "title": "Home & Honor Mountain Canvas Wall Art Set",
+      "merchant": "Amazon.ca",
+      "asin": "B0CSXLCL45",
+      "price": 29.84,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0CSXLCL45"
+    },
+    {
+      "id": "amazon_B0DFD4XCPB",
+      "title": "HOMKOKO Small Storage Box with Handles",
+      "merchant": "Amazon.ca",
+      "asin": "B0DFD4XCPB",
+      "price": 21.49,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0DFD4XCPB"
+    },
+    {
+      "id": "amazon_B0DDC6WXLN",
+      "title": "Jukercici Collapsible Storage Baskets 2-Pack",
+      "merchant": "Amazon.ca",
+      "asin": "B0DDC6WXLN",
+      "price": 36.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0DDC6WXLN"
+    },
+    {
+      "id": "amazon_B0C5M5HHQT",
+      "title": "Lewondr Corduroy Throw Pillow Covers Set of 4",
+      "merchant": "Amazon.ca",
+      "asin": "B0C5M5HHQT",
+      "price": 24.99,
+      "purchaseUrl": "https://www.amazon.ca/dp/B0C5M5HHQT"
+    }
+  ]
+}

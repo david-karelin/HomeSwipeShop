@@ -29,7 +29,7 @@ export default function HowItWorksModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/45"
+      className="fixed inset-0 z-[10000] bg-black/45"
       onClick={onClose}
       aria-modal="true"
       role="dialog"

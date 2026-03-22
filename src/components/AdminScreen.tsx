@@ -6,6 +6,17 @@ import { auth } from "../../firebase";
 import type { EmailKind, EmailKindStat, TopEmailErrorRow } from "../../types";
 import { fetchRecentEvents, fmtCreatedAt, type AdminEventRow } from "../lib/adminEvents";
 
+const hasAdminDebug =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("admin");
+
+const isAdminDebug = import.meta.env.DEV || hasAdminDebug;
+
+const logAdminDebug = (...args: unknown[]) => {
+  if (!isAdminDebug) return;
+  console.log("[admin]", ...args);
+};
+
 type EventType =
   | "session_start"
   | "view_change"
@@ -13,13 +24,16 @@ type EventType =
   | "product_open"
   | "swipe_pass"
   | "wishlist_add"
+  | "wishlist_remove"
   | "cart_add"
+  | "cart_remove"
   | "checkout_open"
   | "checkout_item_open"
   | "buy_click"
   | "lead_submit"
   | "scan_start"
   | "scan_success"
+  | "scan_fail"
   | "scan_apply"
   | "share_click"
   | "pick_impression"
@@ -111,13 +125,16 @@ const TYPES: EventType[] = [
   "card_impression",
   "product_open",
   "wishlist_add",
+  "wishlist_remove",
   "cart_add",
+  "cart_remove",
   "checkout_open",
   "checkout_item_open",
   "buy_click",
   "lead_submit",
   "scan_start",
   "scan_success",
+  "scan_fail",
   "scan_apply",
   "share_click",
   "pick_impression",
@@ -457,12 +474,6 @@ async function fetchAllStatsSince(
         }
       }
     }
-  });
-
-  console.log("[admin] view_change total:", counts["view_change"], "promptSessions:", {
-    cart_confirm: promptSessionSets["cart_confirm"]?.size ?? 0,
-    post_buy_panel: promptSessionSets["post_buy_panel"]?.size ?? 0,
-    roomscan: promptSessionSets["roomscan"]?.size ?? 0,
   });
 
   const valid =
@@ -917,12 +928,32 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
   const leadFromScan = pct(sessNum("lead_submit", "scan_apply"), sess("scan_apply"));
   const emailReturnSessions = utmReturnSessions.emailLeadCartLinks;
   const emailReturnRate = pct(emailReturnSessions, sess("session_start"));
+  const viewChangeTotal = ev("view_change");
+  const cartConfirmPromptSessions = promptSess("cart_confirm");
+  const postBuyPanelPromptSessions = promptSess("post_buy_panel");
+  const roomscanPromptSessions = promptSess("roomscan");
+
+  useEffect(() => {
+    if (!stats) return;
+
+    logAdminDebug("view_change total:", viewChangeTotal, "promptSessions:", {
+      cart_confirm: cartConfirmPromptSessions,
+      post_buy_panel: postBuyPanelPromptSessions,
+      roomscan: roomscanPromptSessions,
+    });
+  }, [
+    stats,
+    viewChangeTotal,
+    cartConfirmPromptSessions,
+    postBuyPanelPromptSessions,
+    roomscanPromptSessions,
+  ]);
 
   useEffect(() => {
     if (sanityLoggedRef.current) return;
     if (!stats) return;
 
-    console.log("SANITY", {
+    logAdminDebug("SANITY", {
       cardSess: sess("card_impression"),
       cartSess: sess("cart_add"),
       cartWithinCards: sessNum("cart_add", "card_impression"),
