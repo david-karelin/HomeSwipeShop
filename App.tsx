@@ -3722,27 +3722,27 @@ const App: React.FC = () => {
                         {userPrefs.cart.map((item) => (
                           <div
                             key={item.id}
-                            className="flex gap-3 rounded-[1.5rem] border border-slate-200 bg-white p-3.5 shadow-sm"
+                            className="grid grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-[1.5rem] border border-slate-200 bg-white p-3.5 shadow-sm"
                           >
                             <button
                               type="button"
-                              className="shrink-0"
+                              className="block h-[76px] w-[76px] shrink-0"
                               onClick={() => openShortlistProduct(item, "shortlist_bag")}
                             >
                               <img
                                 src={item.imageUrl}
                                 alt={item.name}
-                                className="h-[76px] w-[76px] rounded-[1.1rem] object-cover bg-slate-100"
+                                className="h-[76px] w-[76px] rounded-[1.1rem] bg-slate-100 object-cover"
                               />
                             </button>
 
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0">
                               <button
                                 type="button"
                                 onClick={() => openShortlistProduct(item, "shortlist_bag")}
-                                className="w-full text-left"
+                                className="block w-full text-left"
                               >
-                                <div className="truncate text-[15px] font-black text-slate-900">
+                                <div className="line-clamp-2 text-[15px] font-black leading-[1.15] text-slate-900">
                                   {item.name}
                                 </div>
                                 <div className="mt-1 line-clamp-2 text-[13px] leading-5 text-slate-500">
@@ -3759,15 +3759,15 @@ const App: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onMoveCartItemToSaved(item.id)}
-                                    className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-700"
+                                    className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-700 transition-colors hover:bg-slate-100"
                                   >
-                                    Move to Saved
+                                    Save
                                   </button>
 
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onRemoveCartItem(item.id)}
-                                    className="h-9 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[13px] font-bold text-rose-600"
+                                    className="h-9 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[13px] font-bold text-rose-600 transition-colors hover:bg-rose-100"
                                   >
                                     Remove
                                   </button>
@@ -3795,27 +3795,27 @@ const App: React.FC = () => {
                         {userPrefs.wishlist.map((item) => (
                           <div
                             key={item.id}
-                            className="flex gap-3 rounded-[1.5rem] border border-slate-200 bg-white p-3.5 shadow-sm"
+                            className="grid grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-[1.5rem] border border-slate-200 bg-white p-3.5 shadow-sm"
                           >
                             <button
                               type="button"
-                              className="shrink-0"
+                              className="block h-[76px] w-[76px] shrink-0"
                               onClick={() => openShortlistProduct(item, "shortlist_saved")}
                             >
                               <img
                                 src={item.imageUrl}
                                 alt={item.name}
-                                className="h-[76px] w-[76px] rounded-[1.1rem] object-cover bg-slate-100"
+                                className="h-[76px] w-[76px] rounded-[1.1rem] bg-slate-100 object-cover"
                               />
                             </button>
 
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0">
                               <button
                                 type="button"
                                 onClick={() => openShortlistProduct(item, "shortlist_saved")}
-                                className="w-full text-left"
+                                className="block w-full text-left"
                               >
-                                <div className="truncate text-[15px] font-black text-slate-900">
+                                <div className="line-clamp-2 text-[15px] font-black leading-[1.15] text-slate-900">
                                   {item.name}
                                 </div>
                                 <div className="mt-1 line-clamp-2 text-[13px] leading-5 text-slate-500">
@@ -3832,15 +3832,15 @@ const App: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onMoveSavedItemToBag(item.id)}
-                                    className="h-9 rounded-xl bg-[var(--seligo-cta)] px-3 text-[13px] font-extrabold text-white shadow-sm"
+                                    className="h-9 rounded-xl bg-[var(--seligo-cta)] px-3 text-[13px] font-extrabold text-white shadow-sm transition-colors hover:brightness-105"
                                   >
-                                    Move to Bag
+                                    Add to Bag
                                   </button>
 
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onRemoveSavedItem(item.id)}
-                                    className="h-9 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[13px] font-bold text-rose-600"
+                                    className="h-9 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[13px] font-bold text-rose-600 transition-colors hover:bg-rose-100"
                                   >
                                     Remove
                                   </button>
