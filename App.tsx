@@ -2866,10 +2866,10 @@ const App: React.FC = () => {
 
                   <button
                     onClick={closeProductOverlay}
-                    className="absolute top-4 left-4 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/50 bg-white/90 backdrop-blur-xl"
+                    className="absolute top-4 left-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md"
                     aria-label="Back"
                   >
-                    <ArrowLeft className="h-5 w-5 text-slate-900" />
+                    <ArrowLeft className="h-5 w-5 text-slate-700" />
                   </button>
 
                   <div className="absolute bottom-4 right-4 rounded-xl border border-white/70 bg-white/92 px-3 py-1.5 text-sm font-black text-slate-900 shadow-sm backdrop-blur-xl">
