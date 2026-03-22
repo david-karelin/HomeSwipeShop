@@ -228,12 +228,12 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       ].join(" ")}
     >
       <div
-        className="pointer-events-none absolute inset-x-6 -top-2 -bottom-3 rounded-[2.5rem] blur-2xl"
+        className="pointer-events-none absolute inset-x-8 -top-1 -bottom-2 rounded-[2.5rem] blur-xl"
         style={{
           background:
             dragProgress >= 0
-              ? `radial-gradient(circle at 50% 20%, rgba(251,146,60,${0.12 + absDrag * 0.16}), transparent 68%)`
-              : `radial-gradient(circle at 50% 20%, rgba(15,23,42,${0.08 + absDrag * 0.12}), transparent 68%)`,
+              ? `radial-gradient(circle at 50% 20%, rgba(251,146,60,${0.08 + absDrag * 0.10}), transparent 68%)`
+              : `radial-gradient(circle at 50% 20%, rgba(15,23,42,${0.06 + absDrag * 0.08}), transparent 68%)`,
         }}
       />
 
@@ -257,13 +257,10 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
         className="overflow-hidden rounded-[2.25rem] bg-white"
         style={{
           boxShadow: cardShadow,
-          animation:
-            !isDragging && !isSwiping
-              ? "seligo-float 4.8s ease-in-out infinite"
-              : "none",
+          animation: "none",
         }}
       >
-        <div className="relative h-[44svh] min-h-[280px] max-h-[420px] sm:h-[48svh] sm:min-h-[320px] sm:max-h-[480px] bg-[#F3F4F6]">
+        <div className="relative h-[40svh] min-h-[250px] max-h-[380px] sm:h-[46svh] sm:min-h-[300px] sm:max-h-[460px] bg-[#F3F4F6]">
           <img
             src={product.imageUrl}
             alt={displayProductName}
@@ -271,16 +268,6 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           />
 
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/16 via-transparent to-white/5" />
-
-          <div
-            className="pointer-events-none absolute inset-y-0 -left-[12%] w-[42%] blur-2xl"
-            style={{
-              opacity: 0.16 + absDrag * 0.18,
-              transform: `translateX(${dragProgress * 26}px) skewX(-14deg)`,
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.0))",
-            }}
-          />
 
           <div
             style={{ opacity: opacityLike }}
@@ -301,27 +288,27 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           </div>
 
           <div className="pointer-events-none absolute left-4 right-4 top-4 flex items-start justify-between gap-2">
-            <div className="rounded-full border border-white/15 bg-black/42 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-md">
+            <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white">
               {priceBadge}
             </div>
 
-            <div className="rounded-full border border-white/15 bg-black/42 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-md">
+            <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white">
               {displayVibeTag}
             </div>
           </div>
 
           <div className="pointer-events-none absolute left-4 right-4 bottom-4 flex items-end justify-between gap-3">
-            <div className="rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[10px] font-bold text-white/90 backdrop-blur-md">
+            <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[10px] font-bold text-white/90">
               {fitLabel}
             </div>
 
-            <div className="rounded-full border border-white/15 bg-white/88 px-3 py-1.5 text-[10px] font-black text-slate-900 shadow-sm">
+            <div className="rounded-full border border-white/20 bg-white/92 px-3 py-1.5 text-[10px] font-black text-slate-900 shadow-sm">
               Tap for details
             </div>
           </div>
         </div>
 
-        <div className="border-t border-slate-100 bg-white px-5 pt-4 pb-5">
+        <div className="border-t border-slate-100 bg-white px-4 pt-3.5 pb-4">
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-sky-500/85">
             <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
             <span>Swipeable room upgrade</span>
@@ -329,11 +316,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
           <div className="mt-2 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h2 className="overflow-hidden text-[21px] font-black leading-[1.02] tracking-[-0.03em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+              <h2 className="overflow-hidden text-[19px] font-black leading-[1.04] tracking-[-0.03em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                 {shortTitle}
               </h2>
 
-              <p className="mt-2 max-w-[92%] overflow-hidden text-[13px] leading-5 text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+              <p className="mt-1.5 max-w-[94%] overflow-hidden text-[12.5px] leading-5 text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                 {shortDescription}
               </p>
             </div>
@@ -385,9 +372,6 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
               aria-label="Save"
             >
               <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-              <span className="absolute inset-0">
-                <span className="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/12 animate-ping" />
-              </span>
               <Heart
                 className="relative z-10 h-5 w-5 fill-current transition-transform duration-200 group-hover:scale-105"
                 strokeWidth={2.2}
