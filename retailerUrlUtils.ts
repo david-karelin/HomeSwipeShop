@@ -80,6 +80,11 @@ export const buildAmazonAsinUrl = (asin: string, amazonTag?: string | null) => {
   return withAmazonAffiliateTag(baseUrl, amazonTag);
 };
 
+const isAmazonHost = (hostname: string) => {
+  const host = hostname.toLowerCase();
+  return /^(.+\.)?amazon\.[a-z.]+$/.test(host);
+};
+
 export const withAmazonAffiliateTag = (rawUrl: string, amazonTag?: string | null) => {
   const normalizedUrl = normalizeHttpUrl(rawUrl);
   const tag = normalizeAmazonTag(amazonTag);
@@ -88,7 +93,7 @@ export const withAmazonAffiliateTag = (rawUrl: string, amazonTag?: string | null
 
   try {
     const url = new URL(normalizedUrl);
-    if (!url.hostname.toLowerCase().includes("amazon.")) return normalizedUrl;
+    if (!isAmazonHost(url.hostname)) return normalizedUrl;
     url.searchParams.set("tag", tag);
     return url.toString();
   } catch {
@@ -129,8 +134,8 @@ export const getUrlHostname = (value: unknown) => {
 };
 
 export const isAmazonHostname = (hostname: string) => {
-  const normalizedHost = readOptionalString(hostname).toLowerCase();
-  return normalizedHost.includes("amazon.");
+  const host = readOptionalString(hostname).toLowerCase();
+  return /^(.+\.)?amazon\.[a-z.]+$/.test(host);
 };
 
 export const hasAmazonAffiliateTag = (value: unknown) => {
