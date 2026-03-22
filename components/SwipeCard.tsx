@@ -41,7 +41,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const feedbackTimeoutRef = useRef<number | null>(null);
   const swipeTimeoutRef = useRef<number | null>(null);
 
-  const SWIPE_THRESHOLD = 110;
+  const SWIPE_THRESHOLD = 90;
   const TAP_THRESHOLD = 10;
 
   const price = Number(product.price || 0);
@@ -126,9 +126,10 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    hasMovedRef.current = false;
     dragStartRef.current = { x: e.clientX, y: e.clientY };
+    offsetRef.current = { x: 0, y: 0 };
+    hasMovedRef.current = false;
+    setIsDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
 
     const el = cardRef.current;
@@ -150,11 +151,13 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     applyCardTransform(dx, limitedY, true);
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
+  const handlePointerUp = (e?: React.PointerEvent<HTMLDivElement>) => {
+    if (e?.currentTarget?.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
 
+    const { x } = offsetRef.current;
     setIsDragging(false);
-    e.currentTarget.releasePointerCapture(e.pointerId);
 
     if (!hasMovedRef.current) {
       onTap();
@@ -162,14 +165,18 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       return;
     }
 
-    const { x } = offsetRef.current;
     if (x > SWIPE_THRESHOLD) {
       completeSwipe("right");
-    } else if (x < -SWIPE_THRESHOLD) {
-      completeSwipe("left");
-    } else {
-      resetCardPosition();
+      return;
     }
+
+    if (x < -SWIPE_THRESHOLD) {
+      completeSwipe("left");
+      return;
+    }
+
+    offsetRef.current = { x: 0, y: 0 };
+    resetCardPosition();
   };
 
   const completeSwipe = (dir: "left" | "right") => {
@@ -222,9 +229,12 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onLostPointerCapture={handlePointerUp}
       style={{
         willChange: "transform",
-        touchAction: "pan-y",
+        touchAction: "none",
+        userSelect: "none",
+        WebkitUserSelect: "none",
         cursor: isDragging ? "grabbing" : "grab",
       }}
       className={[
@@ -268,7 +278,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           animation: "none",
         }}
       >
-        <div className="relative h-[40svh] min-h-[250px] max-h-[380px] sm:h-[46svh] sm:min-h-[300px] sm:max-h-[460px] bg-[#F3F4F6]">
+        <div className="relative h-[34svh] min-h-[220px] max-h-[320px] sm:h-[42svh] sm:min-h-[280px] sm:max-h-[420px] bg-[#F3F4F6]">
           <img
             src={product.imageUrl}
             alt={displayProductName}
@@ -279,19 +289,19 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
           <div
             style={{ opacity: opacityLike }}
-            className="pointer-events-none absolute left-5 top-5 z-20 rotate-[-12deg] rounded-2xl border-2 border-emerald-400 bg-emerald-500/14 px-4 py-2.5 shadow-lg"
+            className="pointer-events-none absolute left-4 top-14 z-20 rotate-[-10deg] rounded-2xl border border-sky-300 bg-sky-50 px-3.5 py-2 shadow-sm"
           >
-            <span className="text-[26px] font-black uppercase tracking-tight text-emerald-500">
-              YES
+            <span className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">
+              Save
             </span>
           </div>
 
           <div
             style={{ opacity: opacityPass }}
-            className="pointer-events-none absolute right-5 top-5 z-20 rotate-[12deg] rounded-2xl border-2 border-rose-500 bg-rose-500/12 px-4 py-2.5 shadow-lg"
+            className="pointer-events-none absolute right-4 top-14 z-20 rotate-[10deg] rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2 shadow-sm"
           >
-            <span className="text-[26px] font-black uppercase tracking-tight text-rose-500">
-              PASS
+            <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-600">
+              Pass
             </span>
           </div>
 
@@ -316,7 +326,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           </div>
         </div>
 
-        <div className="border-t border-slate-100 bg-white px-4 pt-3.5 pb-4">
+        <div className="border-t border-slate-100 bg-white px-4 pt-3 pb-4">
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-sky-500/85">
             <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
             <span>Swipeable room upgrade</span>
@@ -324,11 +334,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
           <div className="mt-2 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h2 className="overflow-hidden text-[19px] font-black leading-[1.04] tracking-[-0.03em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+              <h2 className="overflow-hidden text-[17px] font-black leading-[1.06] tracking-[-0.03em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                 {shortTitle}
               </h2>
 
-              <p className="mt-1.5 max-w-[94%] overflow-hidden text-[12.5px] leading-5 text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+              <p className="mt-1.5 max-w-[94%] overflow-hidden text-[12px] leading-5 text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                 {shortDescription}
               </p>
             </div>
