@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { Product } from "../types";
 import { Heart, Sparkles, X } from "lucide-react";
 import { beautifyProductName, getDisplayVibeTag } from "../src/lib/feed";
@@ -31,17 +31,18 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 }) => {
   const [isSwiping, setIsSwiping] = useState<"left" | "right" | null>(null);
   const [feedback, setFeedback] = useState<null | "save" | "pass">(null);
-
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [hasMoved, setHasMoved] = useState(false);
+
+  // Ref-based drag for smooth performance (avoids React re-renders during drag)
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const hasMovedRef = useRef(false);
   const feedbackTimeoutRef = useRef<number | null>(null);
   const swipeTimeoutRef = useRef<number | null>(null);
 
-  const SWIPE_THRESHOLD = 120;
+  const SWIPE_THRESHOLD = 110;
   const TAP_THRESHOLD = 10;
-  const ROTATION_FACTOR = 0.1;
 
   const price = Number(product.price || 0);
   const displayPrice =
@@ -107,27 +108,46 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     feedbackTimeoutRef.current = window.setTimeout(() => setFeedback(null), 520);
   };
 
+  // Apply transform directly to DOM for smooth 60fps drag
+  const applyCardTransform = (x: number, y: number, dragging: boolean) => {
+    const el = cardRef.current;
+    if (!el) return;
+    const rotation = Math.max(-12, Math.min(12, x * 0.035));
+    const scale = dragging ? 1.008 : 1;
+    el.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${rotation}deg) scale(${scale})`;
+  };
+
+  const resetCardPosition = () => {
+    const el = cardRef.current;
+    if (!el) return;
+    el.style.transition = "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)";
+    el.style.transform = "translate3d(0px, 0px, 0px) rotate(0deg) scale(1)";
+    offsetRef.current = { x: 0, y: 0 };
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     setIsDragging(true);
-    setHasMoved(false);
-    setDragStart({ x: e.clientX, y: e.clientY });
+    hasMovedRef.current = false;
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
+
+    const el = cardRef.current;
+    if (el) el.style.transition = "none";
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) return;
 
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
 
     if (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD) {
-      setHasMoved(true);
+      hasMovedRef.current = true;
     }
 
-    setOffset({
-      x: dx,
-      y: Math.max(-26, Math.min(26, dy * 0.32)),
-    });
+    const limitedY = Math.max(-18, Math.min(18, dy * 0.22));
+    offsetRef.current = { x: dx, y: limitedY };
+    applyCardTransform(dx, limitedY, true);
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -136,28 +156,32 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     setIsDragging(false);
     e.currentTarget.releasePointerCapture(e.pointerId);
 
-    if (!hasMoved) {
+    if (!hasMovedRef.current) {
       onTap();
-      setOffset({ x: 0, y: 0 });
+      resetCardPosition();
       return;
     }
 
-    if (offset.x > SWIPE_THRESHOLD) {
+    const { x } = offsetRef.current;
+    if (x > SWIPE_THRESHOLD) {
       completeSwipe("right");
-    } else if (offset.x < -SWIPE_THRESHOLD) {
+    } else if (x < -SWIPE_THRESHOLD) {
       completeSwipe("left");
     } else {
-      setOffset({ x: 0, y: 0 });
+      resetCardPosition();
     }
   };
 
   const completeSwipe = (dir: "left" | "right") => {
     if (swipeTimeoutRef.current) window.clearTimeout(swipeTimeoutRef.current);
 
-    const nextOffsetY = Math.max(-24, Math.min(24, offset.y * 0.45));
+    const el = cardRef.current;
+    if (el) {
+      el.style.transition = "transform 180ms ease-out";
+      el.style.transform = `translate3d(${dir === "right" ? 460 : -460}px, ${offsetRef.current.y}px, 0) rotate(${dir === "right" ? 12 : -12}deg) scale(0.95)`;
+    }
 
     setIsSwiping(dir);
-    setOffset({ x: dir === "right" ? 460 : -460, y: nextOffsetY });
     triggerFeedback(dir === "right" ? "save" : "pass");
 
     swipeTimeoutRef.current = window.setTimeout(() => {
@@ -173,44 +197,33 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     completeSwipe(dir);
   };
 
-  const dragProgress = Math.max(-1, Math.min(1, offset.x / SWIPE_THRESHOLD));
+  // For visual feedback overlays only (YES/PASS stamps)
+  const dragProgress = Math.max(-1, Math.min(1, offsetRef.current.x / SWIPE_THRESHOLD));
+
+  const opacityPass = isDragging ? Math.min(Math.max(-offsetRef.current.x / SWIPE_THRESHOLD, 0), 1) : 0;
+  const opacityLike = isDragging ? Math.min(Math.max(offsetRef.current.x / SWIPE_THRESHOLD, 0), 1) : 0;
   const absDrag = Math.abs(dragProgress);
-  const rotation = offset.x * ROTATION_FACTOR;
 
-  const opacityPass = Math.min(Math.max(-offset.x / SWIPE_THRESHOLD, 0), 1);
-  const opacityLike = Math.min(Math.max(offset.x / SWIPE_THRESHOLD, 0), 1);
-
-  const dynamicShadow = useMemo(() => {
-    if (isDragging && offset.x > 0) {
-      return "0 30px 85px rgba(251,146,60,0.26), 0 14px 38px rgba(15,23,42,0.16)";
-    }
-    if (isDragging && offset.x < 0) {
-      return "0 30px 85px rgba(15,23,42,0.22), 0 14px 38px rgba(15,23,42,0.16)";
-    }
-    return "0 22px 60px rgba(249,115,22,0.10), 0 18px 45px rgba(0,0,0,0.18)";
-  }, [isDragging, offset.x]);
+  // Simplified shadow - no longer depends on drag state for performance
+  const cardShadow = "0 22px 60px rgba(249,115,22,0.10), 0 18px 45px rgba(0,0,0,0.18)";
 
   return (
     <div
+      ref={cardRef}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       style={{
-        transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${rotation}deg) scale(${isDragging ? 1.018 : 1})`,
-        transition: isDragging
-          ? "none"
-          : "transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease, filter 0.3s ease",
-        touchAction: "none",
-        cursor: isDragging ? "grabbing" : "grab",
         willChange: "transform",
-        filter: isDragging ? "saturate(1.03)" : "none",
+        touchAction: "pan-y",
+        cursor: isDragging ? "grabbing" : "grab",
       }}
       className={[
         "relative",
         "w-[calc(100vw-1.5rem)]",
         "max-w-[396px] sm:max-w-[404px]",
-        "select-none touch-none",
+        "select-none",
         isSwiping ? "pointer-events-none" : "",
       ].join(" ")}
     >
@@ -243,21 +256,18 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       <div
         className="overflow-hidden rounded-[2.25rem] bg-white"
         style={{
-          boxShadow: dynamicShadow,
+          boxShadow: cardShadow,
           animation:
             !isDragging && !isSwiping
               ? "seligo-float 4.8s ease-in-out infinite"
               : "none",
         }}
       >
-        <div className="relative h-[53vh] min-h-[408px] max-h-[528px] bg-[#F3F4F6]">
+        <div className="relative h-[44svh] min-h-[280px] max-h-[420px] sm:h-[48svh] sm:min-h-[320px] sm:max-h-[480px] bg-[#F3F4F6]">
           <img
             src={product.imageUrl}
             alt={displayProductName}
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-700"
-            style={{
-              transform: `scale(${isDragging ? 1.04 : 1.018}) translateX(${dragProgress * 6}px)`,
-            }}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           />
 
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/16 via-transparent to-white/5" />

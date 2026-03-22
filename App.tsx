@@ -2755,7 +2755,7 @@ const App: React.FC = () => {
                   className="relative z-10 flex items-start justify-center px-3 pt-3"
                   style={{
                     minHeight:
-                      "calc(100dvh - var(--seligo-header-h,76px) - 4.75rem - env(safe-area-inset-bottom))",
+                      "calc(100svh - var(--seligo-header-h,76px) - 7rem - env(safe-area-inset-bottom))",
                   }}
                 >
                   <div className="relative">
@@ -2802,7 +2802,7 @@ const App: React.FC = () => {
                   className="relative z-10 flex items-center justify-center px-6"
                   style={{
                     minHeight:
-                      "calc(100dvh - var(--seligo-header-h,76px) - 4.75rem - env(safe-area-inset-bottom))",
+                      "calc(100svh - var(--seligo-header-h,76px) - 7rem - env(safe-area-inset-bottom))",
                   }}
                 >
                   <div className="max-w-[300px] animate-in fade-in zoom-in rounded-[2.5rem] border border-slate-100 bg-white p-8 text-center shadow-xl">
@@ -3750,16 +3750,16 @@ const App: React.FC = () => {
                                 </div>
                               </button>
 
-                              <div className="mt-2.5 flex items-end justify-between gap-3">
+                              <div className="mt-2.5 space-y-2.5">
                                 <div className="text-[15px] font-black text-slate-900">
                                   ${Number(item.price ?? 0).toFixed(2)}
                                 </div>
 
-                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onMoveCartItemToSaved(item.id)}
-                                    className="h-9 rounded-xl border border-slate-200 px-3 text-[13px] font-bold text-slate-700 bg-white"
+                                    className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-700"
                                   >
                                     Move to Saved
                                   </button>
@@ -3767,7 +3767,7 @@ const App: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onRemoveCartItem(item.id)}
-                                    className="h-9 rounded-xl border border-rose-200 px-3 text-[13px] font-bold text-rose-600 bg-rose-50/60"
+                                    className="h-9 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[13px] font-bold text-rose-600"
                                   >
                                     Remove
                                   </button>
@@ -3823,12 +3823,12 @@ const App: React.FC = () => {
                                 </div>
                               </button>
 
-                              <div className="mt-2.5 flex items-end justify-between gap-3">
+                              <div className="mt-2.5 space-y-2.5">
                                 <div className="text-[15px] font-black text-slate-900">
                                   ${Number(item.price ?? 0).toFixed(2)}
                                 </div>
 
-                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onMoveSavedItemToBag(item.id)}
@@ -3840,7 +3840,7 @@ const App: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onRemoveSavedItem(item.id)}
-                                    className="h-9 rounded-xl border border-rose-200 px-3 text-[13px] font-bold text-rose-600 bg-rose-50/60"
+                                    className="h-9 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[13px] font-bold text-rose-600"
                                   >
                                     Remove
                                   </button>
