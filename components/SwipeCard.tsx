@@ -41,8 +41,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const feedbackTimeoutRef = useRef<number | null>(null);
   const swipeTimeoutRef = useRef<number | null>(null);
 
-  const SWIPE_THRESHOLD = 90;
-  const TAP_THRESHOLD = 10;
+  const SWIPE_THRESHOLD = 72;
 
   const price = Number(product.price || 0);
   const displayPrice =
@@ -126,9 +125,12 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isSwiping) return;
+
+    hasMovedRef.current = false;
     dragStartRef.current = { x: e.clientX, y: e.clientY };
     offsetRef.current = { x: 0, y: 0 };
-    hasMovedRef.current = false;
+
     setIsDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
 
@@ -142,12 +144,13 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
 
-    if (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD) {
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
       hasMovedRef.current = true;
     }
 
-    const limitedY = Math.max(-18, Math.min(18, dy * 0.22));
+    const limitedY = Math.max(-16, Math.min(16, dy * 0.18));
     offsetRef.current = { x: dx, y: limitedY };
+
     applyCardTransform(dx, limitedY, true);
   };
 
@@ -182,10 +185,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const completeSwipe = (dir: "left" | "right") => {
     if (swipeTimeoutRef.current) window.clearTimeout(swipeTimeoutRef.current);
 
+    const EXIT_X = typeof window !== "undefined" ? window.innerWidth * 0.9 : 360;
     const el = cardRef.current;
     if (el) {
       el.style.transition = "transform 180ms ease-out";
-      el.style.transform = `translate3d(${dir === "right" ? 460 : -460}px, ${offsetRef.current.y}px, 0) rotate(${dir === "right" ? 12 : -12}deg) scale(0.95)`;
+      el.style.transform = `translate3d(${dir === "right" ? EXIT_X : -EXIT_X}px, ${offsetRef.current.y}px, 0) rotate(${dir === "right" ? 12 : -12}deg) scale(0.95)`;
     }
 
     setIsSwiping(dir);
@@ -211,11 +215,8 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     completeSwipe(dir);
   };
 
-  // For visual feedback overlays only (YES/PASS stamps)
+  // For visual feedback overlays
   const dragProgress = Math.max(-1, Math.min(1, offsetRef.current.x / SWIPE_THRESHOLD));
-
-  const opacityPass = isDragging ? Math.min(Math.max(-offsetRef.current.x / SWIPE_THRESHOLD, 0), 1) : 0;
-  const opacityLike = isDragging ? Math.min(Math.max(offsetRef.current.x / SWIPE_THRESHOLD, 0), 1) : 0;
   const absDrag = Math.abs(dragProgress);
 
   // Simplified shadow - no longer depends on drag state for performance
@@ -228,7 +229,6 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      onPointerLeave={handlePointerUp}
       onLostPointerCapture={handlePointerUp}
       style={{
         willChange: "transform",
@@ -278,7 +278,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           animation: "none",
         }}
       >
-        <div className="relative h-[34svh] min-h-[220px] max-h-[320px] sm:h-[42svh] sm:min-h-[280px] sm:max-h-[420px] bg-[#F3F4F6]">
+        <div className="relative h-[32svh] min-h-[210px] max-h-[300px] sm:h-[40svh] sm:min-h-[260px] sm:max-h-[400px] bg-[#F3F4F6]">
           <img
             src={product.imageUrl}
             alt={displayProductName}
@@ -288,8 +288,8 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/16 via-transparent to-white/5" />
 
           <div
-            style={{ opacity: opacityLike }}
-            className="pointer-events-none absolute left-4 top-14 z-20 rotate-[-10deg] rounded-2xl border border-sky-300 bg-sky-50 px-3.5 py-2 shadow-sm"
+            className="pointer-events-none absolute left-4 top-4 z-20 rotate-[-10deg] rounded-2xl border border-sky-300 bg-sky-50 px-3.5 py-2 shadow-sm"
+            style={{ opacity: Math.min(1, Math.max(0, offsetRef.current.x / 70)) }}
           >
             <span className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">
               Save
@@ -297,8 +297,8 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           </div>
 
           <div
-            style={{ opacity: opacityPass }}
-            className="pointer-events-none absolute right-4 top-14 z-20 rotate-[10deg] rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2 shadow-sm"
+            className="pointer-events-none absolute right-4 top-4 z-20 rotate-[10deg] rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2 shadow-sm"
+            style={{ opacity: Math.min(1, Math.max(0, -offsetRef.current.x / 70)) }}
           >
             <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-600">
               Pass
