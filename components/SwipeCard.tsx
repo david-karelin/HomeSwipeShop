@@ -38,10 +38,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const dragStartRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
   const hasMovedRef = useRef(false);
+  const isDraggingRef = useRef(false);
   const feedbackTimeoutRef = useRef<number | null>(null);
   const swipeTimeoutRef = useRef<number | null>(null);
 
-  const SWIPE_THRESHOLD = 72;
+  const SWIPE_THRESHOLD = 78;
 
   const price = Number(product.price || 0);
   const displayPrice =
@@ -128,6 +129,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     if (isSwiping) return;
 
     hasMovedRef.current = false;
+    isDraggingRef.current = true;
     dragStartRef.current = { x: e.clientX, y: e.clientY };
     offsetRef.current = { x: 0, y: 0 };
 
@@ -135,11 +137,14 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     e.currentTarget.setPointerCapture(e.pointerId);
 
     const el = cardRef.current;
-    if (el) el.style.transition = "none";
+    if (el) {
+      el.style.transition = "none";
+      el.style.setProperty("--drag-x", "0");
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current) return;
 
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
@@ -151,6 +156,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     const limitedY = Math.max(-16, Math.min(16, dy * 0.18));
     offsetRef.current = { x: dx, y: limitedY };
 
+    const el = cardRef.current;
+    if (el) {
+      el.style.setProperty("--drag-x", String(dx));
+    }
+
     applyCardTransform(dx, limitedY, true);
   };
 
@@ -159,11 +169,16 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
 
-    const { x } = offsetRef.current;
+    isDraggingRef.current = false;
     setIsDragging(false);
+
+    const { x } = offsetRef.current;
 
     if (!hasMovedRef.current) {
       onTap();
+      offsetRef.current = { x: 0, y: 0 };
+      const el = cardRef.current;
+      if (el) el.style.setProperty("--drag-x", "0");
       resetCardPosition();
       return;
     }
@@ -179,6 +194,8 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     }
 
     offsetRef.current = { x: 0, y: 0 };
+    const el = cardRef.current;
+    if (el) el.style.setProperty("--drag-x", "0");
     resetCardPosition();
   };
 
@@ -236,6 +253,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
         userSelect: "none",
         WebkitUserSelect: "none",
         cursor: isDragging ? "grabbing" : "grab",
+        ["--drag-x" as string]: 0,
       }}
       className={[
         "relative",
@@ -278,7 +296,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           animation: "none",
         }}
       >
-        <div className="relative h-[32svh] min-h-[210px] max-h-[300px] sm:h-[40svh] sm:min-h-[260px] sm:max-h-[400px] bg-[#F3F4F6]">
+        <div className="relative h-[30svh] min-h-[200px] max-h-[280px] sm:h-[38svh] sm:min-h-[250px] sm:max-h-[380px] bg-[#F3F4F6]">
           <img
             src={product.imageUrl}
             alt={displayProductName}
@@ -289,7 +307,9 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
           <div
             className="pointer-events-none absolute left-4 top-4 z-20 rotate-[-10deg] rounded-2xl border border-sky-300 bg-sky-50 px-3.5 py-2 shadow-sm"
-            style={{ opacity: Math.min(1, Math.max(0, offsetRef.current.x / 70)) }}
+            style={{
+              opacity: "clamp(0, calc(var(--drag-x) / 70), 1)",
+            }}
           >
             <span className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">
               Save
@@ -298,7 +318,9 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
           <div
             className="pointer-events-none absolute right-4 top-4 z-20 rotate-[10deg] rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2 shadow-sm"
-            style={{ opacity: Math.min(1, Math.max(0, -offsetRef.current.x / 70)) }}
+            style={{
+              opacity: "clamp(0, calc(var(--drag-x) / -70), 1)",
+            }}
           >
             <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-600">
               Pass
