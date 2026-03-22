@@ -1282,6 +1282,7 @@ const App: React.FC = () => {
       meta,
     }).catch(() => {});
 
+    console.log("[openRetailerLink] Resolved purchase URL:", purchaseUrl);
     window.open(purchaseUrl, "_blank", "noopener,noreferrer");
   };
 
