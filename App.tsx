@@ -433,7 +433,14 @@ const App: React.FC = () => {
   const refineLockRef = useRef(false);
   const actionToastTimeoutRef = useRef<number | null>(null);
   const prevViewRef = useRef(view);
+  const productOverlayScrollRef = useRef<HTMLDivElement | null>(null);
   const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
+
+  // Reset scroll to top when product overlay opens
+  useEffect(() => {
+    if (!selectedProduct) return;
+    productOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [selectedProduct]);
 
   const resetImpressions = () => {
     impressedRef.current = new Set();
@@ -2868,17 +2875,20 @@ const App: React.FC = () => {
                     type="button"
                     onClick={closeProductOverlay}
                     aria-label="Back"
-                    className="absolute left-3 top-3 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/70 bg-white/95 shadow-lg"
+                    className="absolute left-3 top-3 z-40 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/80 bg-white shadow-lg"
                   >
                     <ArrowLeft className="h-5 w-5 text-slate-900" />
                   </button>
 
-                  <div className="absolute bottom-4 right-4 rounded-xl border border-white/70 bg-white/92 px-3 py-1.5 text-sm font-black text-slate-900 shadow-sm backdrop-blur-xl">
+                  <div className="absolute bottom-3 right-3 rounded-xl border border-white/70 bg-white/95 px-3 py-1.5 text-sm font-black text-slate-900 shadow-sm">
                     ${Number(selectedProduct.price || 0).toFixed(2)}
                   </div>
                 </div>
 
-                <div className="max-h-[50vh] overflow-y-auto no-scrollbar overscroll-contain px-6 pb-24">
+                <div
+                  ref={productOverlayScrollRef}
+                  className="max-h-[50vh] overflow-y-auto no-scrollbar overscroll-contain px-6 pb-24"
+                >
                   <div className="pt-4">
                     <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-sky-500/80">
                       {overlayEyebrow}
