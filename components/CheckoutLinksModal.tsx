@@ -496,7 +496,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   Your room shortlist
                 </div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Compare saved upgrades, review your bag, and open retailer checkout links when
+                  Compare saved upgrades, review your bag, and open retailer links when
                   you’re ready.
                 </div>
               </div>
@@ -544,7 +544,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <div className="min-w-0">
                     <div className="font-black text-slate-900">Send this shortlist to your inbox?</div>
                     <div className="mt-1 text-sm text-slate-600">
-                      Get checkout links, saved picks, and price-drop alerts in one place.
+                      Get retailer links, saved picks, and price-drop alerts in one place.
                     </div>
                     <div className="mt-2 text-xs text-slate-600">
                       One email now makes future checkout 1-tap.
@@ -687,7 +687,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   data-lead-panel="1"
                   className={`mt-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 ${leadPanelPulse ? "animate-pulse" : ""}`}
                 >
-                  <div className="font-black text-slate-900">Send my checkout links</div>
+                  <div className="font-black text-slate-900">Send my links</div>
                   <div className="mt-1 text-sm text-slate-600">
                     Includes {leadSource === "roomscan" ? "these picks" : lastBoughtName || "this item"} plus
                     saved upgrades and price-drop alerts.
@@ -733,7 +733,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   </button>
 
                   {leadEmail?.trim() ? (
-                    <div className="text-[11px] text-slate-500 mt-2">Checkout links + price drops</div>
+                    <div className="text-[11px] text-slate-500 mt-2">Retailer links + price drops</div>
                   ) : null}
 
                   <button
@@ -818,7 +818,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                               className="h-10 rounded-xl text-xs font-black text-white active:scale-[0.98] transition"
                               style={{ background: "var(--seligo-cta)" }}
                             >
-                              Checkout link ↗
+                              Open retailer ↗
                             </button>
                           </div>
 

@@ -3298,19 +3298,20 @@ const App: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 text-[11px] text-slate-500">
-                        Checkout happens on retailer pages after you continue.
+                      <div className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                        Retailer pages open after you continue.
                       </div>
-                    </div>
 
-                    <button
-                      onClick={continueToCheckout}
-                      disabled={userPrefs.cart.length === 0}
-                      className="mt-4 w-full h-12 rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
-                      style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-                    >
-                      Review checkout links
-                    </button>
+                      <button
+                        type="button"
+                        onClick={continueToCheckout}
+                        disabled={userPrefs.cart.length === 0}
+                        className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
+                        style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                      >
+                        Review retailer links
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -3923,11 +3924,11 @@ const App: React.FC = () => {
                   style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
                   disabled={userPrefs.cart.length === 0}
                 >
-                  Review checkout links
+                  Review retailer links
                 </button>
 
                 <div className="mt-2 text-center text-[11px] text-slate-500">
-                  Checkout happens on retailer pages after you continue.
+                  Retailer pages open after you continue.
                 </div>
               </div>
             )}
