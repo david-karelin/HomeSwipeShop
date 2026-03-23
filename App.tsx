@@ -2856,7 +2856,7 @@ const App: React.FC = () => {
                   <div className="h-1.5 w-11 rounded-full bg-slate-200" />
                 </div>
 
-                <div className="relative h-56 bg-slate-100">
+                <div className="relative h-[22svh] min-h-[150px] max-h-[220px] bg-slate-100">
                   <img
                     src={selectedProduct.imageUrl}
                     alt={selectedProduct.name}
@@ -2865,11 +2865,12 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-black/0 to-transparent" />
 
                   <button
+                    type="button"
                     onClick={closeProductOverlay}
-                    className="absolute top-4 left-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md"
                     aria-label="Back"
+                    className="absolute left-3 top-3 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/70 bg-white/95 shadow-lg"
                   >
-                    <ArrowLeft className="h-5 w-5 text-slate-700" />
+                    <ArrowLeft className="h-5 w-5 text-slate-900" />
                   </button>
 
                   <div className="absolute bottom-4 right-4 rounded-xl border border-white/70 bg-white/92 px-3 py-1.5 text-sm font-black text-slate-900 shadow-sm backdrop-blur-xl">
