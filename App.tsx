@@ -2779,7 +2779,7 @@ const App: React.FC = () => {
                         product={products[currentIndex]}
                         onSwipe={handleSwipe}
                         onSelectAction={handleAction}
-                        onTap={() => handleSwipe("right")}
+                        onTap={() => openProductOverlay(products[currentIndex], { view: "browsing", source: "discover_tap" })}
                       />
                     </div>
                   </div>
