@@ -606,7 +606,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         onClick={onConfirmRetailer}
                         className="h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold hover:bg-slate-50 active:scale-95 transition"
                       >
-                        Open retailer ↗
+                        Continue without email
                       </button>
                     </>
                   ) : (

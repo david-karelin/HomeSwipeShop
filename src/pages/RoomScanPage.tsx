@@ -617,25 +617,19 @@ export default function RoomScanPage({
     </div>
   );
 
-  const isStickyCTA = scanStatus !== "success";
-
   const FooterCTA = (
-    <div
-      className={[
-        "shrink-0 border-t border-slate-200/80 bg-white/92 backdrop-blur-xl px-4 pt-2.5 pb-3",
-        isStickyCTA ? "sticky bottom-0" : "",
-      ].join(" ")}
-    >
+    <div className="mt-4 rounded-[1.5rem] border border-slate-100 bg-white px-4 pt-4 pb-4 shadow-sm">
       {error && (
-        <div className="mb-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
+        <div className="mb-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
           {error}
         </div>
       )}
 
       <button
+        type="button"
         disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
         onClick={scanStatus === "success" ? handleScanAgain : runScan}
-        className="relative w-full overflow-hidden rounded-[1.35rem] px-4 py-3.5 text-white font-extrabold disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-[0_14px_28px_rgba(251,146,60,0.24)]"
+        className="relative h-12 w-full overflow-hidden rounded-2xl px-4 text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
         style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
       >
         <span className="relative z-10">
@@ -649,12 +643,12 @@ export default function RoomScanPage({
         </span>
       </button>
 
-      <div className="mt-2 text-[10px] text-slate-500 text-center font-medium">
+      <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
         Room-only AI • personalized picks • renter-friendly upgrades
       </div>
 
       {!modelReady && !error && (
-        <div className="text-[10px] text-slate-400 text-center mt-1.5">
+        <div className="mt-1.5 text-center text-[10px] text-slate-400">
           Loading AI engine… first run may take a moment
         </div>
       )}
