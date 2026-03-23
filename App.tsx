@@ -3697,45 +3697,6 @@ const App: React.FC = () => {
             <div className="pb-32">
               {shortlistCount > 0 ? (
                 <div className="space-y-5">
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                          Bag subtotal
-                        </div>
-                        <div className="mt-1 text-[28px] leading-none font-black text-slate-900">
-                          ${shortlistSubtotal.toFixed(2)}
-                        </div>
-                        <div className="mt-2 text-xs text-slate-500">
-                          {userPrefs.cart.length} in bag • {userPrefs.wishlist.length} saved
-                        </div>
-                      </div>
-
-                      <div className="rounded-[1.15rem] border border-slate-200 bg-white px-3 py-2 text-right shadow-sm">
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                          Total picks
-                        </div>
-                        <div className="mt-1 text-lg font-black text-slate-900">
-                          {shortlistCount}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 text-[11px] leading-relaxed text-slate-500">
-                      Retailer pages open after you continue.
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => openCheckout("shortlist_summary")}
-                      disabled={userPrefs.cart.length === 0}
-                      className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
-                      style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-                    >
-                      Review retailer links
-                    </button>
-                  </div>
-
                   {userPrefs.cart.length > 0 && (
                     <section>
                       <div className="mb-3 flex items-center justify-between">
