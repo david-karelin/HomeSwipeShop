@@ -128,7 +128,12 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
   const [leadPanelPulse, setLeadPanelPulse] = useState(false);
 
   const leadInputRef = useRef<HTMLInputElement | null>(null);
+  const retailerListRef = useRef<HTMLDivElement | null>(null);
   const leadSourceRef = useRef<"cart_confirm" | "post_buy_panel" | "roomscan">(leadSource);
+
+  const scrollToRetailerList = () => {
+    retailerListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const leadPromptShownRef = useRef<Record<string, boolean>>({});
   const lastRoomscanLeadRequestRef = useRef(0);
   const primaryChoiceLoggedRef = useRef(false);
@@ -536,6 +541,20 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <div className="mt-1 text-lg font-black text-slate-900">{totalCount}</div>
                 </div>
               </div>
+
+              <div className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                Retailer pages open after you continue.
+              </div>
+
+              <button
+                type="button"
+                onClick={scrollToRetailerList}
+                disabled={isCheckoutEmpty}
+                className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
+                style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+              >
+                Review retailer links
+              </button>
             </div>
 
             {pendingBuy && (
@@ -774,7 +793,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div ref={retailerListRef} className="mt-4 space-y-3">
                 {cart.length > 0 &&
                   cart.map((p) => (
                     <div

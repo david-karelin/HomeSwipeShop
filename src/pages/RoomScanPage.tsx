@@ -617,44 +617,6 @@ export default function RoomScanPage({
     </div>
   );
 
-  const FooterCTA = (
-    <div className="mt-4 rounded-[1.5rem] border border-slate-100 bg-white px-4 pt-4 pb-4 shadow-sm">
-      {error && (
-        <div className="mb-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
-          {error}
-        </div>
-      )}
-
-      <button
-        type="button"
-        disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
-        onClick={scanStatus === "success" ? handleScanAgain : runScan}
-        className="relative h-12 w-full overflow-hidden rounded-2xl px-4 text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
-        style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-      >
-        <span className="relative z-10">
-          {scanStatus === "success"
-            ? "Scan again"
-            : scanStatus === "error"
-              ? "Try another room photo"
-              : loading
-                ? "Scanning your room..."
-                : "Scan my room"}
-        </span>
-      </button>
-
-      <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
-        Room-only AI • personalized picks • renter-friendly upgrades
-      </div>
-
-      {!modelReady && !error && (
-        <div className="mt-1.5 text-center text-[10px] text-slate-400">
-          Loading AI engine… first run may take a moment
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div className="min-h-0 h-full flex flex-col bg-[#fffaf6]">
       <input
@@ -785,6 +747,38 @@ export default function RoomScanPage({
                     </div>
                   </div>
                 )}
+
+                {error && (
+                  <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
+                  onClick={scanStatus === "success" ? handleScanAgain : runScan}
+                  className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
+                  style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                >
+                  {scanStatus === "success"
+                    ? "Scan again"
+                    : scanStatus === "error"
+                      ? "Try another room photo"
+                      : loading
+                        ? "Scanning your room..."
+                        : "Scan my room"}
+                </button>
+
+                <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
+                  Room-only AI • personalized picks • renter-friendly upgrades
+                </div>
+
+                {!modelReady && !error && (
+                  <div className="mt-1.5 text-center text-[10px] text-slate-400">
+                    Loading AI engine… first run may take a moment
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -837,6 +831,40 @@ export default function RoomScanPage({
               </div>
 
               {ImageBlock}
+
+              <div className="rounded-[1.5rem] border border-slate-100 bg-white px-4 pt-4 pb-4 shadow-sm">
+                {error && (
+                  <div className="mb-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
+                  onClick={scanStatus === "success" ? handleScanAgain : runScan}
+                  className="h-12 w-full rounded-2xl text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
+                  style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                >
+                  {scanStatus === "success"
+                    ? "Scan again"
+                    : scanStatus === "error"
+                      ? "Try another room photo"
+                      : loading
+                        ? "Scanning your room..."
+                        : "Scan my room"}
+                </button>
+
+                <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
+                  Room-only AI • personalized picks • renter-friendly upgrades
+                </div>
+
+                {!modelReady && !error && (
+                  <div className="mt-1.5 text-center text-[10px] text-slate-400">
+                    Loading AI engine… first run may take a moment
+                  </div>
+                )}
+              </div>
 
               <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
@@ -1274,8 +1302,6 @@ export default function RoomScanPage({
             </>
           )}
       </div>
-
-      {FooterCTA}
     </div>
   );
 }
