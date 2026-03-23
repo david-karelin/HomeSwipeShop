@@ -781,41 +781,45 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       key={p.id}
                       className="rounded-[1.5rem] border border-slate-100 bg-white p-3 shadow-[0_10px_30px_rgba(15,23,42,0.05)]"
                     >
-                      <div className="flex gap-3">
+                      <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-3">
                         <img
                           src={p.imageUrl}
                           alt={p.name}
-                          className="h-16 w-16 rounded-2xl object-cover bg-slate-100"
+                          className="h-16 w-16 rounded-2xl bg-slate-100 object-cover"
                         />
 
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0">
                           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
                             In your bag
                           </div>
 
-                          <div className="mt-1 truncate font-black text-slate-900">{p.name}</div>
+                          <div className="mt-1 line-clamp-2 text-[15px] font-black leading-[1.12] text-slate-900">
+                            {p.name}
+                          </div>
 
-                          <div className="mt-1 text-xs text-slate-500 truncate">
+                          <div className="mt-1 text-xs text-slate-500 line-clamp-1">
                             {p.brand ?? "Seligo.AI"} • ${Number(p.price ?? 0).toFixed(2)}
                           </div>
 
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
+                              type="button"
                               onClick={() => {
                                 handleClose();
                                 onOpenProduct?.(p);
                               }}
-                              className="h-10 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700"
+                              className="h-10 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 transition-colors hover:bg-slate-50"
                             >
-                              View
+                              View details
                             </button>
 
                             <button
+                              type="button"
                               onClick={() => {
                                 setPostBuyLeadOpen(false);
                                 void handleBuy(p);
                               }}
-                              className="h-10 rounded-xl text-xs font-black text-white active:scale-[0.98] transition"
+                              className="h-10 rounded-xl text-xs font-black text-white transition active:scale-[0.98]"
                               style={{ background: "var(--seligo-cta)" }}
                             >
                               Open retailer ↗
@@ -824,21 +828,23 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
 
                           <div className="mt-2 flex items-center gap-3 text-[11px] font-bold">
                             <button
+                              type="button"
                               onClick={() => {
                                 setPostBuyLeadOpen(false);
                                 onMoveCartItemToSaved(p);
                               }}
-                              className="text-slate-500 hover:text-slate-800"
+                              className="text-slate-500 transition-colors hover:text-slate-800"
                             >
-                              Move to Saved
+                              Save for later
                             </button>
 
                             <button
+                              type="button"
                               onClick={() => {
                                 setPostBuyLeadOpen(false);
                                 onRemoveCartItem(p.id);
                               }}
-                              className="text-slate-400 hover:text-slate-700"
+                              className="text-slate-400 transition-colors hover:text-slate-700"
                             >
                               Remove
                             </button>
