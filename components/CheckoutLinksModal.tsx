@@ -553,7 +553,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
                 style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
               >
-                Jump to retailer links
+                Jump to items ↓
               </button>
             </div>
 

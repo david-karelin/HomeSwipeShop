@@ -3720,6 +3720,20 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     </div>
+
+                    <div className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                      Retailer pages open after you continue.
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openCheckout("shortlist_summary")}
+                      disabled={userPrefs.cart.length === 0}
+                      className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
+                      style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                    >
+                      Review retailer links
+                    </button>
                   </div>
 
                   {userPrefs.cart.length > 0 && (
@@ -3892,46 +3906,6 @@ const App: React.FC = () => {
                 </div>
               )}
             </div>
-
-            {shortlistCount > 0 && (
-              <div
-                className="sticky bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur-xl pt-3"
-                style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
-              >
-                <div className="mb-3 flex items-center justify-between rounded-[1.25rem] border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-sm">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                      Bag subtotal
-                    </div>
-                    <div className="mt-1 text-xl font-black text-slate-900">
-                      ${shortlistSubtotal.toFixed(2)}
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                      In bag
-                    </div>
-                    <div className="mt-1 text-xl font-black text-slate-900">
-                      {userPrefs.cart.length}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => openCheckout("shortlist_footer")}
-                  className="w-full rounded-2xl py-4 font-extrabold text-white transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
-                  style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-                  disabled={userPrefs.cart.length === 0}
-                >
-                  Review retailer links
-                </button>
-
-                <div className="mt-2 text-center text-[11px] text-slate-500">
-                  Retailer pages open after you continue.
-                </div>
-              </div>
-            )}
           </Screen>
         )}
       </main>
