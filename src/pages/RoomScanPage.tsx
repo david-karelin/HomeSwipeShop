@@ -549,12 +549,12 @@ export default function RoomScanPage({
 
   const ImageBlock = (
     <div
-      className={`relative mt-4 overflow-hidden rounded-[2rem] border bg-slate-100 ${
+      className={`relative overflow-hidden bg-slate-100 ${
         scanStatus === "success"
-          ? "border-emerald-300 ring-4 ring-emerald-100"
+          ? "ring-4 ring-emerald-100 ring-inset"
           : roomScanReason
-            ? "border-rose-200"
-            : "border-slate-200"
+            ? "ring-2 ring-rose-200 ring-inset"
+            : ""
       }`}
     >
       <style>{`
@@ -830,40 +830,74 @@ export default function RoomScanPage({
                 </div>
               </div>
 
-              {ImageBlock}
+              <div className="rounded-[2rem] border border-slate-200 bg-white shadow-sm overflow-hidden">
+                {ImageBlock}
 
-              <div className="rounded-[1.5rem] border border-slate-100 bg-white px-4 pt-4 pb-4 shadow-sm">
-                {error && (
-                  <div className="mb-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
-                    {error}
+                <div className="px-4 pt-3 pb-4">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => cameraRef.current?.click()}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
+                    >
+                      Take photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => uploadRef.current?.click()}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
+                    >
+                      Upload photo
+                    </button>
                   </div>
-                )}
 
-                <button
-                  type="button"
-                  disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
-                  onClick={scanStatus === "success" ? handleScanAgain : runScan}
-                  className="h-12 w-full rounded-2xl text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
-                  style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-                >
-                  {scanStatus === "success"
-                    ? "Scan again"
-                    : scanStatus === "error"
-                      ? "Try another room photo"
-                      : loading
-                        ? "Scanning your room..."
-                        : "Scan my room"}
-                </button>
+                  {file && (
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2.5 border border-slate-200/70">
+                      <div className="text-xs text-slate-600 truncate">
+                        Selected: <span className="font-semibold">{file.name}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-800 select-none"
+                        onClick={() => pickFile(null)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
 
-                <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
-                  Room-only AI • personalized picks • renter-friendly upgrades
+                  {error && (
+                    <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
+                    onClick={scanStatus === "success" ? handleScanAgain : runScan}
+                    className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
+                    style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                  >
+                    {scanStatus === "success"
+                      ? "Scan again"
+                      : scanStatus === "error"
+                        ? "Try another room photo"
+                        : loading
+                          ? "Scanning your room..."
+                          : "Scan my room"}
+                  </button>
+
+                  <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
+                    Room-only AI • personalized picks • renter-friendly upgrades
+                  </div>
+
+                  {!modelReady && !error && (
+                    <div className="mt-1.5 text-center text-[10px] text-slate-400">
+                      Loading AI engine… first run may take a moment
+                    </div>
+                  )}
                 </div>
-
-                {!modelReady && !error && (
-                  <div className="mt-1.5 text-center text-[10px] text-slate-400">
-                    Loading AI engine… first run may take a moment
-                  </div>
-                )}
               </div>
 
               <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
