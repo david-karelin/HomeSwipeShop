@@ -2854,16 +2854,19 @@ const App: React.FC = () => {
             />
 
             <div
-              className="absolute left-0 right-0 bottom-0 mx-auto w-full max-w-md"
-              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+              className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md px-0"
+              style={{
+                paddingBottom: "env(safe-area-inset-bottom)",
+                paddingTop: "max(0.75rem, env(safe-area-inset-top))",
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="overflow-hidden rounded-t-[2.25rem] border border-slate-200 bg-white shadow-2xl">
-                <div className="flex justify-center pt-3 pb-2">
+              <div className="flex max-h-[calc(100svh-env(safe-area-inset-top)-0.75rem)] flex-col overflow-hidden rounded-t-[2.25rem] border border-slate-200 bg-white shadow-2xl">
+                <div className="flex shrink-0 justify-center pt-3 pb-2">
                   <div className="h-1.5 w-11 rounded-full bg-slate-200" />
                 </div>
 
-                <div className="relative h-[22svh] min-h-[150px] max-h-[220px] bg-slate-100">
+                <div className="relative h-[22svh] min-h-[150px] max-h-[220px] shrink-0 bg-slate-100">
                   <img
                     src={selectedProduct.imageUrl}
                     alt={selectedProduct.name}
@@ -2887,7 +2890,7 @@ const App: React.FC = () => {
 
                 <div
                   ref={productOverlayScrollRef}
-                  className="max-h-[50vh] overflow-y-auto no-scrollbar overscroll-contain px-6 pb-24"
+                  className="min-h-0 flex-1 overflow-y-auto no-scrollbar overscroll-contain px-6 pb-24"
                 >
                   <div className="pt-4">
                     <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-sky-500/80">
