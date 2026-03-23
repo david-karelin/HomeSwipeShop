@@ -550,10 +550,10 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                 type="button"
                 onClick={scrollToRetailerList}
                 disabled={isCheckoutEmpty}
-                className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
-                style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-slate-700 hover:text-slate-900 disabled:opacity-50 transition-colors"
               >
                 Review retailer links
+                <span className="text-slate-400">↓</span>
               </button>
             </div>
 
