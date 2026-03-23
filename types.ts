@@ -121,4 +121,6 @@ export type AppState =
   | 'privacy'
   | 'terms'
   | 'disclosure'
+  | 'contact'
+  | 'about'
   | 'admin';

@@ -330,19 +330,48 @@ const PrivacyScreen = ({ onBack }: { onBack: () => void }) => (
   <div className="p-6 bg-white min-h-full">
     <div className="flex items-start justify-between mb-6">
       <div>
-        <div className="text-2xl font-extrabold text-slate-900">Privacy</div>
-        <div className="text-sm text-slate-500 mt-1">How Seligo handles data</div>
+        <div className="text-2xl font-extrabold text-slate-900">Privacy Policy</div>
+        <div className="text-sm text-slate-500 mt-1">How Seligo collects and uses information</div>
       </div>
       <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
         <X className="h-5 w-5 text-slate-600" />
       </button>
     </div>
 
-    <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
-      <p>Seligo.AI uses anonymous authentication to personalize your feed.</p>
-      <p>We store your swipes, saved items, and usage events to improve recommendations.</p>
-      <p>If you submit your email for updates, it’s stored for that purpose only.</p>
-      <p>We do not sell personal data.</p>
+    <div className="space-y-5 pb-32">
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Information we collect</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Seligo may collect basic usage information such as page views, product interactions,
+          swipes, saves, shortlist activity, outbound retailer clicks, device and browser
+          information, and any contact information you choose to submit.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">How we use information</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          We use this information to improve the Seligo experience, understand product usage,
+          maintain app performance, and support features such as saved items and optional
+          communications.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Third-party services</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Seligo may use services such as Firebase, Vercel Analytics, and external retailer
+          websites. Purchases are completed on third-party retailer sites, not within Seligo.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Data sharing</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          We do not sell personal data. If you submit your email for updates, it is stored for
+          that purpose only.
+        </p>
+      </section>
     </div>
   </div>
 );
@@ -351,7 +380,7 @@ const TermsScreen = ({ onBack }: { onBack: () => void }) => (
   <div className="p-6 bg-white min-h-full">
     <div className="flex items-start justify-between mb-6">
       <div>
-        <div className="text-2xl font-extrabold text-slate-900">Terms</div>
+        <div className="text-2xl font-extrabold text-slate-900">Terms of Use</div>
         <div className="text-sm text-slate-500 mt-1">Using Seligo</div>
       </div>
       <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
@@ -359,10 +388,29 @@ const TermsScreen = ({ onBack }: { onBack: () => void }) => (
       </button>
     </div>
 
-    <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
-      <p>Seligo.AI provides product discovery and links to third-party retailers.</p>
-      <p>Product availability, pricing, and policies are controlled by the retailer.</p>
-      <p>Use at your own discretion. Seligo.AI is provided “as is”.</p>
+    <div className="space-y-5 pb-32">
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Service description</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Seligo provides product discovery and links to third-party retailers. Seligo does not
+          directly sell products.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Third-party purchases</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Product availability, pricing, and policies are controlled by the retailer. Purchases
+          are completed on third-party retailer sites.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Disclaimer</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Use at your own discretion. Seligo is provided "as is" without warranties of any kind.
+        </p>
+      </section>
     </div>
   </div>
 );
@@ -379,9 +427,80 @@ const DisclosureScreen = ({ onBack }: { onBack: () => void }) => (
       </button>
     </div>
 
-    <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
-      <p>{AFFILIATE_DISCLOSURE_TEXT}</p>
-      <p>These links do not change the price you pay.</p>
+    <div className="space-y-5 pb-32">
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-sm leading-6 text-slate-600">
+          Seligo may earn a commission from qualifying purchases made through some retailer links,
+          at no extra cost to you.
+        </p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          As an Amazon Associate, Seligo earns from qualifying purchases.
+        </p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          These links do not change the price you pay.
+        </p>
+      </section>
+    </div>
+  </div>
+);
+
+const AboutScreen = ({ onBack }: { onBack: () => void }) => (
+  <div className="p-6 bg-white min-h-full">
+    <div className="flex items-start justify-between mb-6">
+      <div>
+        <div className="text-2xl font-extrabold text-slate-900">About Seligo</div>
+        <div className="text-sm text-slate-500 mt-1">How Seligo works</div>
+      </div>
+      <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <X className="h-5 w-5 text-slate-600" />
+      </button>
+    </div>
+
+    <div className="space-y-5 pb-32">
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Discover faster</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Seligo helps you discover home décor with swipe-style browsing, saved shortlists,
+          and room-inspired shopping.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Save what you like</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Save products you like, review them later in your shortlist, and compare options more easily.
+        </p>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-black text-slate-900">Shop through retailers</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Seligo does not directly sell products. When you are ready, you can open retailer links
+          and complete your purchase on third-party sites.
+        </p>
+      </section>
+    </div>
+  </div>
+);
+
+const ContactScreen = ({ onBack }: { onBack: () => void }) => (
+  <div className="p-6 bg-white min-h-full">
+    <div className="flex items-start justify-between mb-6">
+      <div>
+        <div className="text-2xl font-extrabold text-slate-900">Contact</div>
+        <div className="text-sm text-slate-500 mt-1">Questions, feedback, or broken links</div>
+      </div>
+      <button onClick={onBack} className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <X className="h-5 w-5 text-slate-600" />
+      </button>
+    </div>
+
+    <div className="space-y-5 pb-32">
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-sm leading-6 text-slate-600">
+          Reach us at: <a href="mailto:davidkarelin3@gmail.com" className="font-semibold text-[var(--seligo-primary)] underline">davidkarelin3@gmail.com</a>
+        </p>
+      </section>
     </div>
   </div>
 );
@@ -2558,9 +2677,11 @@ const App: React.FC = () => {
     );
   }
 
-  if (view === "privacy") return <PrivacyScreen onBack={() => goView("profile", "legal_back")} />;
-  if (view === "terms") return <TermsScreen onBack={() => goView("profile", "legal_back")} />;
-  if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "legal_back")} />;
+  if (view === "privacy") return <PrivacyScreen onBack={() => goView("profile", "privacy_close")} />;
+  if (view === "terms") return <TermsScreen onBack={() => goView("profile", "terms_close")} />;
+  if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "disclosure_close")} />;
+  if (view === "about") return <AboutScreen onBack={() => goView("profile", "about_close")} />;
+  if (view === "contact") return <ContactScreen onBack={() => goView("profile", "contact_close")} />;
   if (view === "admin") {
     if (!adminEnabled) return <div className="p-6">Not authorized.</div>;
     return <AdminScreen onBack={() => goView("profile", "admin_back")} />;
@@ -3639,28 +3760,46 @@ const App: React.FC = () => {
                   Reset my data
                 </button>
 
-                <div className="mt-5 flex justify-center gap-4 text-[11px] font-bold text-slate-500">
-                  <button
-                    type="button"
-                    onClick={() => goView("privacy", "profile_footer")}
-                    className="transition-colors hover:text-slate-700"
-                  >
-                    Privacy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => goView("terms", "profile_footer")}
-                    className="transition-colors hover:text-slate-700"
-                  >
-                    Terms
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => goView("disclosure", "profile_footer")}
-                    className="transition-colors hover:text-slate-700"
-                  >
-                    Disclosure
-                  </button>
+                {/* Legal section */}
+                <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-xs font-black uppercase tracking-[0.22em] text-slate-400 mb-3">Legal</h3>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => goView("about", "profile_about")}
+                      className="w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      About Seligo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goView("privacy", "profile_privacy")}
+                      className="w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Privacy Policy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goView("terms", "profile_terms")}
+                      className="w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Terms of Use
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goView("disclosure", "profile_disclosure")}
+                      className="w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Affiliate Disclosure
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goView("contact", "profile_contact")}
+                      className="w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Contact
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
