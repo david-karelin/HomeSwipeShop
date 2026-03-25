@@ -123,4 +123,7 @@ export type AppState =
   | 'disclosure'
   | 'contact'
   | 'about'
-  | 'admin';
+  | 'admin'
+  | 'bedroomDecorUnder50'
+  | 'dormRoomDecorIdeas'
+  | 'smallApartmentDecor';

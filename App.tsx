@@ -505,6 +505,617 @@ const ContactScreen = ({ onBack }: { onBack: () => void }) => (
   </div>
 );
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   SEO Landing Pages
+───────────────────────────────────────────────────────────────────────────── */
+
+const BedroomDecorUnder50Screen = ({
+  onBack,
+  onNavigate,
+}: {
+  onBack: () => void;
+  onNavigate: (view: AppState, source?: string) => void;
+}) => {
+  useEffect(() => {
+    document.title = "Bedroom Decor Under $50 | Affordable Room Upgrades | Seligo";
+
+    const setMeta = (name: string, content: string) => {
+      let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("name", name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    const setCanonical = (href: string) => {
+      let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement("link");
+        link.setAttribute("rel", "canonical");
+        document.head.appendChild(link);
+      }
+      link.setAttribute("href", href);
+    };
+
+    const setJsonLd = (id: string, data: Record<string, unknown>) => {
+      let script = document.getElementById(id) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement("script");
+        script.type = "application/ld+json";
+        script.id = id;
+        document.head.appendChild(script);
+      }
+      script.textContent = JSON.stringify(data);
+    };
+
+    setMeta(
+      "description",
+      "Browse affordable bedroom decor under $50, including lamps, mirrors, wall art, storage, and renter-friendly room upgrades for small spaces."
+    );
+    setCanonical("https://www.seligo.app/bedroom-decor-under-50");
+
+    setJsonLd("seo-bedroom-under-50", {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Bedroom Decor Under $50",
+      url: "https://www.seligo.app/bedroom-decor-under-50",
+      description:
+        "Affordable bedroom decor ideas under $50, including lighting, mirrors, wall art, storage, and renter-friendly upgrades.",
+    });
+
+    return () => {
+      document.title = "Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces";
+      setMeta(
+        "description",
+        "Discover affordable room upgrades faster. Seligo lets you swipe through decor for bedrooms, dorms, apartments, and small spaces."
+      );
+      setCanonical("https://www.seligo.app/");
+      const script = document.getElementById("seo-bedroom-under-50");
+      if (script) script.remove();
+    };
+  }, []);
+
+  return (
+    <main className="min-h-screen bg-white text-slate-900">
+      <div className="mx-auto max-w-3xl px-6 py-12">
+        <button
+          onClick={onBack}
+          className="mb-8 text-sm font-medium text-sky-600 hover:underline"
+        >
+          ← Back to Seligo
+        </button>
+
+        <h1 className="text-4xl font-bold tracking-tight">Bedroom Decor Under $50</h1>
+
+        <p className="mt-6 text-lg leading-8 text-slate-700">
+          Decorating a bedroom does not need a huge budget. The best low-cost upgrades
+          are usually the ones that add warmth, storage, or visual interest without
+          taking up much space. For renters, students, and anyone decorating a smaller
+          room, affordable pieces can make a space feel more intentional without turning
+          into a full redesign project.
+        </p>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Best low-cost bedroom upgrades</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Start with the items that change the feel of a room quickly. Lighting helps a
+            bedroom feel warmer. Mirrors reflect light and make small spaces feel more
+            open. Wall decor adds personality without using floor space, while storage and
+            small bedside accents make the room feel cleaner and more finished.
+          </p>
+
+          <ul className="mt-4 ml-6 list-disc space-y-2 text-slate-600">
+            <li><strong>LED string lights or fairy lights</strong> — instant cozy glow for under $15</li>
+            <li><strong>Small accent mirror</strong> — makes a room feel larger and brighter</li>
+            <li><strong>Floating shelf</strong> — vertical storage without taking up floor space</li>
+            <li><strong>Throw pillow covers</strong> — quick color or texture refresh for $10–20</li>
+            <li><strong>Desktop organizer or tray</strong> — keeps a nightstand or desk clutter-free</li>
+          </ul>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">How to decorate a bedroom on a budget</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            The easiest way to decorate on a budget is to improve one area at a time.
+            Instead of buying everything at once, start with the upgrade that changes the
+            room most noticeably. That might be softer lighting, a mirror above a dresser,
+            better visible storage, or one statement object that gives the room character.
+            Budget decorating works best when the items are compact, practical, and easy
+            to mix with what you already own.
+          </p>
+
+          <p className="mt-4 leading-8 text-slate-600">
+            Renter-friendly upgrades are especially useful in bedrooms. Adhesive hooks,
+            removable wall decor, peel-and-stick details, and compact storage solutions let
+            you personalize the room without making permanent changes.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">What to prioritize first</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            If you only have room in the budget for one or two upgrades, start with
+            lighting and visible clutter. Those two changes usually make the biggest
+            difference. A bedroom feels more expensive when it looks calm, organized, and
+            softly lit, even if most of the items are inexpensive.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Why use Seligo</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Seligo makes decor browsing faster by letting you swipe through affordable room
+            upgrades instead of opening lots of product tabs. It is built for bedrooms,
+            dorms, and small apartments, with a focus on pieces that feel realistic for
+            everyday budgets. That makes it easier to discover ideas quickly, save the
+            ones that match your vibe, and move on from the ones that do not.
+          </p>
+        </section>
+
+        <div className="mt-10 flex flex-wrap gap-4">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              onBack();
+            }}
+            className="inline-flex rounded-2xl bg-sky-500 px-5 py-3 font-semibold text-white transition hover:bg-sky-600"
+          >
+            Try Seligo Free
+          </a>
+
+          <a
+            href="/dorm-room-decor-ideas"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("dormRoomDecorIdeas", "seo_internal_link");
+            }}
+            className="inline-flex rounded-2xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Dorm Room Ideas
+          </a>
+
+          <a
+            href="/small-apartment-decor"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("smallApartmentDecor", "seo_internal_link");
+            }}
+            className="inline-flex rounded-2xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Small Apartment Decor
+          </a>
+        </div>
+      </div>
+    </main>
+  );
+};
+
+const DormRoomDecorIdeasScreen = ({
+  onBack,
+  onNavigate,
+}: {
+  onBack: () => void;
+  onNavigate: (view: AppState, source?: string) => void;
+}) => {
+  useEffect(() => {
+    document.title = "Dorm Room Decor Ideas | Budget-Friendly College Room Upgrades | Seligo";
+
+    const setMeta = (name: string, content: string) => {
+      let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("name", name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    const setCanonical = (href: string) => {
+      let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement("link");
+        link.setAttribute("rel", "canonical");
+        document.head.appendChild(link);
+      }
+      link.setAttribute("href", href);
+    };
+
+    const setJsonLd = (id: string, data: Record<string, unknown>) => {
+      let script = document.getElementById(id) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement("script");
+        script.type = "application/ld+json";
+        script.id = id;
+        document.head.appendChild(script);
+      }
+      script.textContent = JSON.stringify(data);
+    };
+
+    setMeta(
+      "description",
+      "Explore dorm room decor ideas including LED lights, storage solutions, desk accessories, and renter-friendly wall art for college students."
+    );
+    setCanonical("https://www.seligo.app/dorm-room-decor-ideas");
+
+    setJsonLd("seo-dorm-decor", {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Dorm Room Decor Ideas",
+      url: "https://www.seligo.app/dorm-room-decor-ideas",
+      description:
+        "Budget-friendly dorm room decor ideas including lights, storage, desk accessories, and damage-free wall art for college students.",
+    });
+
+    return () => {
+      document.title = "Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces";
+      setMeta(
+        "description",
+        "Discover affordable room upgrades faster. Seligo lets you swipe through decor for bedrooms, dorms, apartments, and small spaces."
+      );
+      setCanonical("https://www.seligo.app/");
+      const script = document.getElementById("seo-dorm-decor");
+      if (script) script.remove();
+    };
+  }, []);
+
+  return (
+    <main className="min-h-screen bg-white text-slate-900">
+      <div className="mx-auto max-w-3xl px-6 py-12">
+        <button
+          onClick={onBack}
+          className="mb-8 text-sm font-medium text-sky-600 hover:underline"
+        >
+          ← Back to Seligo
+        </button>
+
+        <h1 className="text-4xl font-bold tracking-tight">Dorm Room Decor Ideas</h1>
+
+        <p className="mt-6 text-lg leading-8 text-slate-700">
+          A dorm room is usually small, shared, and temporary — but that does not mean it
+          has to feel boring. With a few affordable upgrades, you can make your space feel
+          more personal without breaking dorm rules or your budget. The best dorm decor is
+          portable, damage-free, and easy to pack when you move out at the end of the year.
+        </p>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Best dorm room upgrades</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Focus on items that are portable, damage-free, and multi-functional. You will
+            move again, so choose decor that packs easily. The most useful dorm upgrades
+            tend to be lighting, vertical storage, desk accessories, and things that make
+            blank walls feel less institutional.
+          </p>
+
+          <ul className="mt-4 ml-6 list-disc space-y-2 text-slate-600">
+            <li><strong>LED strip lights or fairy lights</strong> — add ambiance without overhead lighting</li>
+            <li><strong>Over-door hooks and organizers</strong> — maximize vertical space</li>
+            <li><strong>Desk lamp with USB port</strong> — practical and useful for late-night studying</li>
+            <li><strong>Command strip photo display</strong> — personalize walls without nails</li>
+            <li><strong>Under-bed storage bins</strong> — hidden space for off-season clothes</li>
+          </ul>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Dorm decor that is renter-friendly</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Command strips, washi tape, and tension rods are your best friends. These let
+            you hang art, curtains, and organizers without damaging walls or doors. Most
+            dorms have strict rules about modifications, so stick to removable options.
+            Peel-and-stick mirrors, freestanding shelves, and clip-on lights work well in
+            spaces where you cannot drill or paint.
+          </p>
+
+          <p className="mt-4 leading-8 text-slate-600">
+            Think about what you will take with you when you leave. Small, lightweight
+            items that pack flat are easier to move between dorms or apartments. Avoid
+            bulky furniture that only works in one specific room layout.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Where to start</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            If your dorm feels bare and you are not sure where to begin, start with
+            lighting and one piece of wall decor. Those two upgrades change the feel
+            of a room more than anything else. After that, look at desk organization
+            and storage. A clean, well-lit space feels more livable even if it is small.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Why use Seligo for dorm decor</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Seligo curates affordable picks specifically for small spaces like dorms. Swipe
+            through options quickly, save favorites, and shop when you are ready — no endless
+            scrolling through irrelevant results. Everything is filtered for realistic
+            budgets and compact spaces, so you do not waste time looking at things that
+            would never work in a dorm room.
+          </p>
+        </section>
+
+        <div className="mt-10 flex flex-wrap gap-4">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              onBack();
+            }}
+            className="inline-flex rounded-2xl bg-sky-500 px-5 py-3 font-semibold text-white transition hover:bg-sky-600"
+          >
+            Try Seligo Free
+          </a>
+
+          <a
+            href="/bedroom-decor-under-50"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("bedroomDecorUnder50", "seo_internal_link");
+            }}
+            className="inline-flex rounded-2xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Bedroom Decor Under $50
+          </a>
+
+          <a
+            href="/small-apartment-decor"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("smallApartmentDecor", "seo_internal_link");
+            }}
+            className="inline-flex rounded-2xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Small Apartment Decor
+          </a>
+        </div>
+      </div>
+    </main>
+  );
+};
+
+const SmallApartmentDecorScreen = ({
+  onBack,
+  onNavigate,
+}: {
+  onBack: () => void;
+  onNavigate: (view: AppState, source?: string) => void;
+}) => {
+  useEffect(() => {
+    document.title = "Small Apartment Decor | Space-Saving Ideas for Renters | Seligo";
+
+    const setMeta = (name: string, content: string) => {
+      let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("name", name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    const setCanonical = (href: string) => {
+      let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement("link");
+        link.setAttribute("rel", "canonical");
+        document.head.appendChild(link);
+      }
+      link.setAttribute("href", href);
+    };
+
+    const setJsonLd = (id: string, data: Record<string, unknown>) => {
+      let script = document.getElementById(id) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement("script");
+        script.type = "application/ld+json";
+        script.id = id;
+        document.head.appendChild(script);
+      }
+      script.textContent = JSON.stringify(data);
+    };
+
+    setMeta(
+      "description",
+      "Discover small apartment decor ideas that maximize space. Renter-friendly picks for studios, one-bedrooms, and compact living spaces."
+    );
+    setCanonical("https://www.seligo.app/small-apartment-decor");
+
+    setJsonLd("seo-small-apartment", {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Small Apartment Decor",
+      url: "https://www.seligo.app/small-apartment-decor",
+      description:
+        "Space-saving decor ideas for small apartments, studios, and rentals. Renter-friendly furniture, storage, and accent pieces.",
+    });
+
+    return () => {
+      document.title = "Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces";
+      setMeta(
+        "description",
+        "Discover affordable room upgrades faster. Seligo lets you swipe through decor for bedrooms, dorms, apartments, and small spaces."
+      );
+      setCanonical("https://www.seligo.app/");
+      const script = document.getElementById("seo-small-apartment");
+      if (script) script.remove();
+    };
+  }, []);
+
+  return (
+    <main className="min-h-screen bg-white text-slate-900">
+      <div className="mx-auto max-w-3xl px-6 py-12">
+        <button
+          onClick={onBack}
+          className="mb-8 text-sm font-medium text-sky-600 hover:underline"
+        >
+          ← Back to Seligo
+        </button>
+
+        <h1 className="text-4xl font-bold tracking-tight">Small Apartment Decor</h1>
+
+        <p className="mt-6 text-lg leading-8 text-slate-700">
+          Living in a small apartment means every square foot counts. The right decor
+          choices can make a compact space feel bigger, brighter, and more functional
+          without cluttering it up. For renters, the challenge is finding pieces that
+          work without permanent modifications — and that are worth taking with you
+          when you move.
+        </p>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Best decor for small apartments</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Prioritize pieces that serve double duty: storage that looks good, mirrors
+            that open up space, and furniture that folds or stacks. In small apartments,
+            every item should earn its place. Look for things that are compact, easy to
+            move, and visually light — heavy, bulky furniture makes a small room feel
+            even smaller.
+          </p>
+
+          <ul className="mt-4 ml-6 list-disc space-y-2 text-slate-600">
+            <li><strong>Wall-mounted shelves</strong> — get storage off the floor</li>
+            <li><strong>Large mirror</strong> — reflects light and makes rooms feel twice as big</li>
+            <li><strong>Nesting tables</strong> — extra surface area when you need it, hidden when you don't</li>
+            <li><strong>Over-toilet storage</strong> — turns dead bathroom space into useful shelving</li>
+            <li><strong>Slim console table</strong> — entryway organization without blocking walkways</li>
+          </ul>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Apartment decor tips for renters</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Stick to removable solutions: peel-and-stick backsplash, tension rod curtains,
+            and freestanding furniture. Avoid drilling into walls when possible. If you do
+            hang art, use picture hanging strips that come off clean. Command hooks,
+            adhesive shelves, and temporary wallpaper let you personalize without risking
+            your deposit.
+          </p>
+
+          <p className="mt-4 leading-8 text-slate-600">
+            Think vertically. In a small apartment, floor space is limited, but wall space
+            often goes unused. Floating shelves, tall bookcases, and wall-mounted organizers
+            help you store more without making the room feel crowded.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Where to start</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            If your apartment feels cramped or cluttered, start with storage and lighting.
+            Getting items off surfaces and into visible storage makes a room look cleaner
+            instantly. Adding a mirror or better lighting makes the space feel more open.
+            After that, add one or two accent pieces that give the room personality without
+            taking up extra floor space.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Why use Seligo for apartment decor</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Seligo filters for items that work in small spaces. Swipe to discover compact
+            furniture, space-saving storage, and affordable accent pieces — all curated for
+            apartments, studios, and rentals. That means less time scrolling through
+            oversized furniture and more time finding things that actually fit your space
+            and budget.
+          </p>
+        </section>
+
+        <div className="mt-10 flex flex-wrap gap-4">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              onBack();
+            }}
+            className="inline-flex rounded-2xl bg-sky-500 px-5 py-3 font-semibold text-white transition hover:bg-sky-600"
+          >
+            Try Seligo Free
+          </a>
+
+          <a
+            href="/bedroom-decor-under-50"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("bedroomDecorUnder50", "seo_internal_link");
+            }}
+            className="inline-flex rounded-2xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Bedroom Decor Under $50
+          </a>
+
+          <a
+            href="/dorm-room-decor-ideas"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("dormRoomDecorIdeas", "seo_internal_link");
+            }}
+            className="inline-flex rounded-2xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Dorm Room Ideas
+          </a>
+        </div>
+      </div>
+    </main>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SEO URL ↔ View mapping helpers
+───────────────────────────────────────────────────────────────────────────── */
+
+const normalizePath = (pathname: string): string => {
+  const clean = pathname.replace(/\/+$/, "");
+  return clean === "" ? "/" : clean;
+};
+
+const pathToView = (pathname: string): AppState => {
+  const path = normalizePath(pathname);
+  switch (path) {
+    case "/bedroom-decor-under-50":
+      return "bedroomDecorUnder50";
+    case "/dorm-room-decor-ideas":
+      return "dormRoomDecorIdeas";
+    case "/small-apartment-decor":
+      return "smallApartmentDecor";
+    case "/privacy":
+      return "privacy";
+    case "/terms":
+      return "terms";
+    case "/disclosure":
+      return "disclosure";
+    case "/about":
+      return "about";
+    case "/contact":
+      return "contact";
+    default:
+      return "auth";
+  }
+};
+
+const viewToPath = (view: AppState): string => {
+  switch (view) {
+    case "bedroomDecorUnder50":
+      return "/bedroom-decor-under-50";
+    case "dormRoomDecorIdeas":
+      return "/dorm-room-decor-ideas";
+    case "smallApartmentDecor":
+      return "/small-apartment-decor";
+    case "privacy":
+      return "/privacy";
+    case "terms":
+      return "/terms";
+    case "disclosure":
+      return "/disclosure";
+    case "about":
+      return "/about";
+    case "contact":
+      return "/contact";
+    default:
+      return "/";
+  }
+};
+
 const App: React.FC = () => {
   type LeadSource = "cart_confirm" | "post_buy_panel" | "roomscan";
   const adminEnabled =
@@ -513,7 +1124,10 @@ const App: React.FC = () => {
   const openRoomscanEnabled =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("open") === "roomscan";
-  const [view, setView] = useState<AppState>("auth");
+  const [view, setView] = useState<AppState>(() => {
+    if (typeof window === "undefined") return "auth";
+    return pathToView(window.location.pathname);
+  });
   const [userPrefs, setUserPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -655,11 +1269,24 @@ const App: React.FC = () => {
   };
 
   const goView = (next: AppState, source = "nav") => {
+    const nextPath = viewToPath(next);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
     setShowSavedSheet(false);
     setShowBagSheet(false);
     setView(next);
     void Firestore.logEvent({ type: "view_change", source, view: next }).catch(console.warn);
   };
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const onPopState = () => {
+      setView(pathToView(window.location.pathname));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -2682,6 +3309,33 @@ const App: React.FC = () => {
   if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "disclosure_close")} />;
   if (view === "about") return <AboutScreen onBack={() => goView("profile", "about_close")} />;
   if (view === "contact") return <ContactScreen onBack={() => goView("profile", "contact_close")} />;
+
+  // SEO landing pages
+  if (view === "bedroomDecorUnder50") {
+    return (
+      <BedroomDecorUnder50Screen
+        onBack={() => goView("auth", "seo_page_close")}
+        onNavigate={goView}
+      />
+    );
+  }
+  if (view === "dormRoomDecorIdeas") {
+    return (
+      <DormRoomDecorIdeasScreen
+        onBack={() => goView("auth", "seo_page_close")}
+        onNavigate={goView}
+      />
+    );
+  }
+  if (view === "smallApartmentDecor") {
+    return (
+      <SmallApartmentDecorScreen
+        onBack={() => goView("auth", "seo_page_close")}
+        onNavigate={goView}
+      />
+    );
+  }
+
   if (view === "admin") {
     if (!adminEnabled) return <div className="p-6">Not authorized.</div>;
     return <AdminScreen onBack={() => goView("profile", "admin_back")} />;
@@ -3799,6 +4453,34 @@ const App: React.FC = () => {
                     >
                       Contact
                     </button>
+                  </div>
+                </div>
+
+                {/* Discover section - internal SEO links */}
+                <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-xs font-black uppercase tracking-[0.22em] text-slate-400 mb-3">Discover</h3>
+                  <div className="space-y-2">
+                    <a
+                      href="/bedroom-decor-under-50"
+                      onClick={(e) => { e.preventDefault(); goView("bedroomDecorUnder50", "profile_seo_link"); }}
+                      className="block w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Bedroom decor under $50
+                    </a>
+                    <a
+                      href="/dorm-room-decor-ideas"
+                      onClick={(e) => { e.preventDefault(); goView("dormRoomDecorIdeas", "profile_seo_link"); }}
+                      className="block w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Dorm room decor ideas
+                    </a>
+                    <a
+                      href="/small-apartment-decor"
+                      onClick={(e) => { e.preventDefault(); goView("smallApartmentDecor", "profile_seo_link"); }}
+                      className="block w-full text-left text-sm font-semibold text-slate-700 py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      Small apartment decor
+                    </a>
                   </div>
                 </div>
               </div>
