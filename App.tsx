@@ -774,65 +774,72 @@ const DormRoomDecorIdeasScreen = ({
         <h1 className="text-4xl font-bold tracking-tight">Dorm Room Decor Ideas</h1>
 
         <p className="mt-6 text-lg leading-8 text-slate-700">
-          A dorm room is usually small, shared, and temporary — but that does not mean it
-          has to feel boring. With a few affordable upgrades, you can make your space feel
-          more personal without breaking dorm rules or your budget. The best dorm decor is
-          portable, damage-free, and easy to pack when you move out at the end of the year.
+          A dorm room is usually small, shared, and temporary, but that does not mean it
+          has to feel boring. With a few affordable upgrades, you can make your space
+          feel more personal, more organized, and more comfortable without breaking dorm
+          rules or overspending. The best dorm decor ideas are usually compact, useful,
+          and easy to remove at the end of the school year.
         </p>
 
         <section className="mt-10">
           <h2 className="text-2xl font-semibold">Best dorm room upgrades</h2>
           <p className="mt-4 leading-8 text-slate-600">
-            Focus on items that are portable, damage-free, and multi-functional. You will
-            move again, so choose decor that packs easily. The most useful dorm upgrades
-            tend to be lighting, vertical storage, desk accessories, and things that make
-            blank walls feel less institutional.
+            When space is limited, the best upgrades are the ones that improve both style
+            and function. Good lighting makes a dorm feel warmer. Vertical storage helps
+            you use walls, doors, and under-bed space more efficiently. Desk accessories,
+            soft textiles, and a few small personal touches can make the room feel more
+            finished without creating clutter.
           </p>
 
           <ul className="mt-4 ml-6 list-disc space-y-2 text-slate-600">
-            <li><strong>LED strip lights or fairy lights</strong> — add ambiance without overhead lighting</li>
-            <li><strong>Over-door hooks and organizers</strong> — maximize vertical space</li>
-            <li><strong>Desk lamp with USB port</strong> — practical and useful for late-night studying</li>
-            <li><strong>Command strip photo display</strong> — personalize walls without nails</li>
-            <li><strong>Under-bed storage bins</strong> — hidden space for off-season clothes</li>
+            <li><strong>LED strip lights or fairy lights</strong> — add ambiance without relying on harsh overhead lighting</li>
+            <li><strong>Over-door hooks and organizers</strong> — maximize vertical space in a small room</li>
+            <li><strong>Desk lamp with USB port</strong> — practical for studying and charging devices</li>
+            <li><strong>Command-strip photo display</strong> — personalize walls without nails</li>
+            <li><strong>Under-bed storage bins</strong> — make use of hidden storage for clothes and supplies</li>
           </ul>
         </section>
 
         <section className="mt-10">
           <h2 className="text-2xl font-semibold">Dorm decor that is renter-friendly</h2>
           <p className="mt-4 leading-8 text-slate-600">
-            Command strips, washi tape, and tension rods are your best friends. These let
-            you hang art, curtains, and organizers without damaging walls or doors. Most
-            dorms have strict rules about modifications, so stick to removable options.
-            Peel-and-stick mirrors, freestanding shelves, and clip-on lights work well in
-            spaces where you cannot drill or paint.
+            Most dorms have restrictions on nails, paint, and permanent wall changes, so
+            renter-friendly decor matters. Damage-free wall hooks, removable adhesive
+            strips, lightweight wall art, and peel-and-stick details are good options
+            because they let you customize the room without causing problems at move-out.
           </p>
 
           <p className="mt-4 leading-8 text-slate-600">
-            Think about what you will take with you when you leave. Small, lightweight
-            items that pack flat are easier to move between dorms or apartments. Avoid
-            bulky furniture that only works in one specific room layout.
+            Soft items can also do a lot of visual work in a dorm. Throw blankets, pillow
+            covers, bed risers, and a compact rug can make the room feel more comfortable
+            without requiring permanent installation.
           </p>
         </section>
 
         <section className="mt-10">
           <h2 className="text-2xl font-semibold">Where to start</h2>
           <p className="mt-4 leading-8 text-slate-600">
-            If your dorm feels bare and you are not sure where to begin, start with
-            lighting and one piece of wall decor. Those two upgrades change the feel
-            of a room more than anything else. After that, look at desk organization
-            and storage. A clean, well-lit space feels more livable even if it is small.
+            If you are decorating a dorm room from scratch, start with three priorities:
+            better lighting, cleaner storage, and one or two personal accents. Those
+            changes usually make the biggest difference first. A dorm feels better when it
+            looks organized and intentional, even if the actual decor budget is small.
+          </p>
+
+          <p className="mt-4 leading-8 text-slate-600">
+            Try to avoid buying too many small decorative items at once. In a dorm, too
+            much visual clutter makes the room feel tighter. A few useful upgrades usually
+            work better than a long list of random accessories.
           </p>
         </section>
 
         <section className="mt-10">
           <h2 className="text-2xl font-semibold">Why use Seligo for dorm decor</h2>
           <p className="mt-4 leading-8 text-slate-600">
-            Seligo curates affordable picks specifically for small spaces like dorms. Swipe
-            through options quickly, save favorites, and shop when you are ready — no endless
-            scrolling through irrelevant results. Everything is filtered for realistic
-            budgets and compact spaces, so you do not waste time looking at things that
-            would never work in a dorm room.
+            Seligo makes it easier to discover affordable room upgrades without opening a
+            bunch of shopping tabs. Instead of searching store by store, you can swipe
+            through decor ideas built for bedrooms, dorms, apartments, and other small
+            spaces. That helps you quickly find dorm-friendly pieces that match your vibe,
+            budget, and available space.
           </p>
         </section>
 
@@ -959,7 +966,7 @@ const SmallApartmentDecorScreen = ({
           Living in a small apartment means every square foot counts. The right decor
           choices can make a compact space feel bigger, brighter, and more functional
           without cluttering it up. For renters, the challenge is finding pieces that
-          work without permanent modifications — and that are worth taking with you
+          work without permanent modifications and still feel worth bringing with you
           when you move.
         </p>
 
@@ -967,17 +974,17 @@ const SmallApartmentDecorScreen = ({
           <h2 className="text-2xl font-semibold">Best decor for small apartments</h2>
           <p className="mt-4 leading-8 text-slate-600">
             Prioritize pieces that serve double duty: storage that looks good, mirrors
-            that open up space, and furniture that folds or stacks. In small apartments,
-            every item should earn its place. Look for things that are compact, easy to
-            move, and visually light — heavy, bulky furniture makes a small room feel
-            even smaller.
+            that open up space, and furniture that folds, stacks, or nests away. In a
+            small apartment, every item should earn its place. Look for pieces that are
+            compact, easy to move, and visually light. Bulky furniture and heavy-looking
+            decor can make a small room feel even tighter.
           </p>
 
           <ul className="mt-4 ml-6 list-disc space-y-2 text-slate-600">
             <li><strong>Wall-mounted shelves</strong> — get storage off the floor</li>
-            <li><strong>Large mirror</strong> — reflects light and makes rooms feel twice as big</li>
-            <li><strong>Nesting tables</strong> — extra surface area when you need it, hidden when you don't</li>
-            <li><strong>Over-toilet storage</strong> — turns dead bathroom space into useful shelving</li>
+            <li><strong>Large mirror</strong> — reflects light and makes rooms feel bigger</li>
+            <li><strong>Nesting tables</strong> — extra surface area when you need it</li>
+            <li><strong>Over-toilet storage</strong> — turns dead bathroom space into shelving</li>
             <li><strong>Slim console table</strong> — entryway organization without blocking walkways</li>
           </ul>
         </section>
@@ -985,17 +992,28 @@ const SmallApartmentDecorScreen = ({
         <section className="mt-10">
           <h2 className="text-2xl font-semibold">Apartment decor tips for renters</h2>
           <p className="mt-4 leading-8 text-slate-600">
-            Stick to removable solutions: peel-and-stick backsplash, tension rod curtains,
-            and freestanding furniture. Avoid drilling into walls when possible. If you do
-            hang art, use picture hanging strips that come off clean. Command hooks,
-            adhesive shelves, and temporary wallpaper let you personalize without risking
-            your deposit.
+            Stick to removable solutions where possible: peel-and-stick backsplash,
+            tension rods, freestanding furniture, removable wall hooks, and picture
+            hanging strips. These give you flexibility without creating problems when
+            it is time to move out.
           </p>
 
           <p className="mt-4 leading-8 text-slate-600">
-            Think vertically. In a small apartment, floor space is limited, but wall space
-            often goes unused. Floating shelves, tall bookcases, and wall-mounted organizers
-            help you store more without making the room feel crowded.
+            Think vertically too. In a small apartment, floor space disappears quickly,
+            but wall space is often underused. Floating shelves, tall bookcases, and
+            wall-mounted organizers help you store more without making the room feel
+            crowded.
+          </p>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">How to make a small apartment feel bigger</h2>
+          <p className="mt-4 leading-8 text-slate-600">
+            Small spaces usually feel better when they are brighter, less crowded, and
+            visually consistent. Mirrors help reflect light. Better lamps make corners
+            feel less cramped. A tighter color palette can make a room feel calmer and
+            more open. Even a few small changes, like replacing cluttered surfaces with
+            trays or baskets, can make the apartment feel more intentional.
           </p>
         </section>
 
@@ -1004,20 +1022,18 @@ const SmallApartmentDecorScreen = ({
           <p className="mt-4 leading-8 text-slate-600">
             If your apartment feels cramped or cluttered, start with storage and lighting.
             Getting items off surfaces and into visible storage makes a room look cleaner
-            instantly. Adding a mirror or better lighting makes the space feel more open.
-            After that, add one or two accent pieces that give the room personality without
-            taking up extra floor space.
+            almost immediately. Then add one or two accent pieces that give the room
+            personality without taking up extra floor space.
           </p>
         </section>
 
         <section className="mt-10">
           <h2 className="text-2xl font-semibold">Why use Seligo for apartment decor</h2>
           <p className="mt-4 leading-8 text-slate-600">
-            Seligo filters for items that work in small spaces. Swipe to discover compact
-            furniture, space-saving storage, and affordable accent pieces — all curated for
-            apartments, studios, and rentals. That means less time scrolling through
-            oversized furniture and more time finding things that actually fit your space
-            and budget.
+            Seligo makes it easier to discover items that actually work in small spaces.
+            Instead of scrolling through oversized furniture and random product pages,
+            you can swipe through compact decor, space-saving storage, and affordable
+            accents curated for apartments, studios, and rentals.
           </p>
         </section>
 
