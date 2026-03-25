@@ -1,105 +1,155 @@
 
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <title>Seligo — Swipe decor ideas and shop your vibe</title>
-    <meta name="description" content="Discover decor picks for bedrooms, living rooms, desks, and small spaces. Swipe, save, and shop curated pieces that match your style." />
-    <!-- Inline Tailwind CSS for offline support -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Fallback font stack if Google Fonts unavailable -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" onerror="this.remove()">
-    <style>
-      :root{
-        --seligo-primary: #0EA5E9;
-        --seligo-cta: #F97316;
-        --seligo-accent: #22C55E;
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#0EA5E9" />
+
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+
+  <title>Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces</title>
+  <meta
+    name="description"
+    content="Discover affordable room upgrades faster. Seligo lets you swipe through decor for bedrooms, dorms, apartments, and small spaces."
+  />
+  <link rel="canonical" href="https://www.seligo.app/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Seligo" />
+  <meta property="og:title" content="Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces" />
+  <meta
+    property="og:description"
+    content="Discover affordable room upgrades faster. Swipe through decor for bedrooms, dorms, apartments, and small spaces."
+  />
+  <meta property="og:url" content="https://www.seligo.app/" />
+  <meta property="og:image" content="https://www.seligo.app/og-image.jpg" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces" />
+  <meta
+    name="twitter:description"
+    content="Discover affordable room upgrades faster. Swipe through decor for bedrooms, dorms, apartments, and small spaces."
+  />
+  <meta name="twitter:image" content="https://www.seligo.app/og-image.jpg" />
+
+  <!-- Structured data -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Seligo",
+      "applicationCategory": "ShoppingApplication",
+      "operatingSystem": "Web",
+      "url": "https://www.seligo.app/",
+      "description": "A mobile-first web app for discovering affordable room decor faster by swiping through products for bedrooms, dorms, apartments, and small spaces."
+    }
+  </script>
+
+  <!-- Inline Tailwind CSS for offline support -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Fallback font stack if Google Fonts unavailable -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+    onerror="this.remove()"
+  />
+
+  <style>
+    :root{
+      --seligo-primary: #0EA5E9;
+      --seligo-cta: #F97316;
+      --seligo-accent: #22C55E;
+    }
+    html, body, #root {
+      height: 100%;
+    }
+    .seligo-screen {
+      min-height: 100dvh;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    @keyframes seligo-pop-in {
+      0% {
+        opacity: 0;
+        transform: scale(0.82) translateY(8px);
       }
-      html, body, #root {
-        height: 100%;
+      70% {
+        opacity: 1;
+        transform: scale(1.04) translateY(0);
       }
-      .seligo-screen {
-        min-height: 100dvh;
+      100% {
+        opacity: 1;
+        transform: scale(1);
       }
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f8fafc;
+    }
+    @keyframes seligo-float {
+      0%, 100% {
+        transform: translateY(0px);
       }
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
+      50% {
+        transform: translateY(-4px);
       }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+    }
+    @keyframes seligo-flash-save {
+      0% {
+        opacity: 0;
+        transform: scale(0.8) translateY(6px);
       }
-      @keyframes seligo-pop-in {
-        0% {
-          opacity: 0;
-          transform: scale(0.82) translateY(8px);
-        }
-        70% {
-          opacity: 1;
-          transform: scale(1.04) translateY(0);
-        }
-        100% {
-          opacity: 1;
-          transform: scale(1);
-        }
+      20% {
+        opacity: 1;
+        transform: scale(1.06) translateY(0);
       }
-      @keyframes seligo-float {
-        0%, 100% {
-          transform: translateY(0px);
-        }
-        50% {
-          transform: translateY(-4px);
-        }
+      100% {
+        opacity: 0;
+        transform: scale(1) translateY(-8px);
       }
-      @keyframes seligo-flash-save {
-        0% {
-          opacity: 0;
-          transform: scale(0.8) translateY(6px);
-        }
-        20% {
-          opacity: 1;
-          transform: scale(1.06) translateY(0);
-        }
-        100% {
-          opacity: 0;
-          transform: scale(1) translateY(-8px);
-        }
+    }
+    @keyframes seligo-pulse-ring {
+      0% {
+        opacity: 0.35;
+        transform: scale(0.94);
       }
-      @keyframes seligo-pulse-ring {
-        0% {
-          opacity: 0.35;
-          transform: scale(0.94);
-        }
-        100% {
-          opacity: 0;
-          transform: scale(1.08);
-        }
+      100% {
+        opacity: 0;
+        transform: scale(1.08);
       }
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.01ms !important;
-          scroll-behavior: auto !important;
-        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
       }
-    </style>
+    }
+  </style>
+
   <script type="importmap">
-{
-  "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
+  {
+    "imports": {
+      "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+      "react/": "https://esm.sh/react@^19.2.4/",
+      "react": "https://esm.sh/react@^19.2.4",
+      "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+      "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
+    }
   }
-}
-</script>
+  </script>
 </head>
   <body>
     <div id="root"></div>
