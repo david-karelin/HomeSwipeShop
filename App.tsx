@@ -800,6 +800,31 @@ const DormRoomDecorIdeasScreen = ({
         "Budget-friendly dorm room decor ideas including lights, storage, desk accessories, and damage-free wall art for college students.",
     });
 
+    setJsonLd("seo-dorm-breadcrumb", {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: "https://www.seligo.app/",
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Decor Guides",
+          item: "https://www.seligo.app/about",
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: "Dorm Room Decor Ideas",
+          item: "https://www.seligo.app/dorm-room-decor-ideas",
+        },
+      ],
+    });
+
     return () => {
       document.title = "Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces";
       setMeta(
@@ -809,6 +834,8 @@ const DormRoomDecorIdeasScreen = ({
       setCanonical("https://www.seligo.app/");
       const script = document.getElementById("seo-dorm-decor");
       if (script) script.remove();
+      const breadcrumbScript = document.getElementById("seo-dorm-breadcrumb");
+      if (breadcrumbScript) breadcrumbScript.remove();
     };
   }, []);
 
@@ -821,6 +848,38 @@ const DormRoomDecorIdeasScreen = ({
         >
           ← Back to Seligo
         </button>
+
+        <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-500">
+          <ol className="flex flex-wrap items-center gap-2">
+            <li>
+              <a
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate("browsing", "breadcrumb_home");
+                }}
+                className="hover:text-slate-700"
+              >
+                Home
+              </a>
+            </li>
+            <li>/</li>
+            <li>
+              <a
+                href="/about"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate("about", "breadcrumb_guides");
+                }}
+                className="hover:text-slate-700"
+              >
+                Decor Guides
+              </a>
+            </li>
+            <li>/</li>
+            <li className="font-medium text-slate-700">Dorm Room Decor Ideas</li>
+          </ol>
+        </nav>
 
         <h1 className="text-4xl font-bold tracking-tight">Dorm Room Decor Ideas</h1>
 
@@ -985,6 +1044,31 @@ const SmallApartmentDecorScreen = ({
         "Space-saving decor ideas for small apartments, studios, and rentals. Renter-friendly furniture, storage, and accent pieces.",
     });
 
+    setJsonLd("seo-apartment-breadcrumb", {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: "https://www.seligo.app/",
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Decor Guides",
+          item: "https://www.seligo.app/about",
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: "Small Apartment Decor",
+          item: "https://www.seligo.app/small-apartment-decor",
+        },
+      ],
+    });
+
     return () => {
       document.title = "Seligo | Swipe Home Decor for Bedrooms, Dorms, and Small Spaces";
       setMeta(
@@ -994,6 +1078,8 @@ const SmallApartmentDecorScreen = ({
       setCanonical("https://www.seligo.app/");
       const script = document.getElementById("seo-small-apartment");
       if (script) script.remove();
+      const breadcrumbScript = document.getElementById("seo-apartment-breadcrumb");
+      if (breadcrumbScript) breadcrumbScript.remove();
     };
   }, []);
 
@@ -1006,6 +1092,38 @@ const SmallApartmentDecorScreen = ({
         >
           ← Back to Seligo
         </button>
+
+        <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-500">
+          <ol className="flex flex-wrap items-center gap-2">
+            <li>
+              <a
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate("browsing", "breadcrumb_home");
+                }}
+                className="hover:text-slate-700"
+              >
+                Home
+              </a>
+            </li>
+            <li>/</li>
+            <li>
+              <a
+                href="/about"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate("about", "breadcrumb_guides");
+                }}
+                className="hover:text-slate-700"
+              >
+                Decor Guides
+              </a>
+            </li>
+            <li>/</li>
+            <li className="font-medium text-slate-700">Small Apartment Decor</li>
+          </ol>
+        </nav>
 
         <h1 className="text-4xl font-bold tracking-tight">Small Apartment Decor</h1>
 
