@@ -26,6 +26,7 @@ import { VIBE_CATEGORIES, normalizeInterestIds } from './src/constants';
 import { logDiscoveryDebug, logDiscoveryStage, logRoomScanDebug, warnDiscoveryStage } from './src/lib/debug';
 import { prepareSwipeFeed, prioritizeMainFeedInventory } from './src/lib/feed';
 import { filterLaunchCatalogProducts } from './src/lib/launchCatalog';
+import { getSeoPresetFromUrl, type SeoPreset } from './src/lib/seoPresets';
 import RoomScanPage from './src/pages/RoomScanPage';
 import type { UTM } from './src/lib/utm';
 import type { RoomScanAnalysis } from './src/services/localRoomScan';
@@ -710,14 +711,10 @@ const BedroomDecorUnder50Screen = ({
 
         <div className="mt-10 flex flex-wrap gap-4">
           <a
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              onBack();
-            }}
+            href="/?preset=bedroom_under_50"
             className="inline-flex rounded-2xl bg-sky-500 px-5 py-3 font-semibold text-white transition hover:bg-sky-600"
           >
-            Try Seligo Free
+            Browse Bedroom Picks Under $50
           </a>
 
           <a
@@ -899,14 +896,10 @@ const DormRoomDecorIdeasScreen = ({
 
         <div className="mt-10 flex flex-wrap gap-4">
           <a
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              onBack();
-            }}
+            href="/?preset=dorm_ideas"
             className="inline-flex rounded-2xl bg-sky-500 px-5 py-3 font-semibold text-white transition hover:bg-sky-600"
           >
-            Try Seligo Free
+            Browse Dorm-Friendly Decor
           </a>
 
           <a
@@ -1093,14 +1086,10 @@ const SmallApartmentDecorScreen = ({
 
         <div className="mt-10 flex flex-wrap gap-4">
           <a
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              onBack();
-            }}
+            href="/?preset=small_apartment"
             className="inline-flex rounded-2xl bg-sky-500 px-5 py-3 font-semibold text-white transition hover:bg-sky-600"
           >
-            Try Seligo Free
+            Browse Small-Space Picks
           </a>
 
           <a
@@ -1228,6 +1217,7 @@ const App: React.FC = () => {
   const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
   const [roomscanLeadRequestNonce, setRoomscanLeadRequestNonce] = useState(0);
   const [leadSource, setLeadSource] = useState<LeadSource>("post_buy_panel");
+  const [activeSeoPreset, setActiveSeoPreset] = useState<SeoPreset | null>(null);
   const leadSourceRef = useRef<LeadSource>("post_buy_panel");
   const swipedRef = useRef<Set<string>>(new Set());
   const impressedRef = useRef<Set<string>>(new Set());
@@ -1239,6 +1229,40 @@ const App: React.FC = () => {
   const productOverlayScrollRef = useRef<HTMLDivElement | null>(null);
   const normalizedBlockedTags = useMemo(() => toStringArray(blockedTags), [blockedTags]);
   const blockedSet = useMemo(() => new Set(normalizedBlockedTags), [normalizedBlockedTags]);
+
+  // Read SEO preset from URL on load
+  useEffect(() => {
+    const preset = getSeoPresetFromUrl();
+    if (preset) {
+      setActiveSeoPreset(preset);
+      void Firestore.logEvent({
+        type: "view_change",
+        source: preset.source,
+        view: "browsing",
+        meta: { panel: "seo_entry", preset: preset.key },
+      }).catch(console.warn);
+    }
+  }, []);
+
+  // Score products by preset relevance
+  const scoreProductByPreset = (product: Product, preset: SeoPreset | null): number => {
+    if (!preset) return 0;
+    let score = 0;
+    const price = Number(product.price ?? 0);
+    const categoryText = String(product.category ?? "").toLowerCase();
+    const tagText = Array.isArray(product.tags) ? product.tags.join(" ").toLowerCase() : "";
+
+    if (preset.maxPrice != null && price > 0 && price <= preset.maxPrice) {
+      score += 3;
+    }
+    for (const c of preset.categories) {
+      if (categoryText.includes(c.toLowerCase())) score += 4;
+    }
+    for (const t of preset.tags) {
+      if (tagText.includes(t.toLowerCase())) score += 2;
+    }
+    return score;
+  };
 
   // Reset scroll to top when product overlay opens
   useEffect(() => {
@@ -1639,7 +1663,18 @@ const App: React.FC = () => {
       return true;
     });
 
-    return rankAndDiversifyFeed(visible, interests);
+    let ranked = rankAndDiversifyFeed(visible, interests);
+
+    // Apply SEO preset scoring if active
+    if (activeSeoPreset) {
+      ranked = [...ranked].sort((a, b) => {
+        const scoreA = scoreProductByPreset(a, activeSeoPreset);
+        const scoreB = scoreProductByPreset(b, activeSeoPreset);
+        return scoreB - scoreA;
+      });
+    }
+
+    return ranked;
   };
 
   // Persistent Hydration
@@ -1652,9 +1687,10 @@ const App: React.FC = () => {
         ...saved,
         interests: normalizedSavedInterests,
       });
-      const curatedFeed = rankAndDiversifyFeed(savedFeed, normalizedSavedInterests);
 
       setAllProducts(savedFeed);
+
+      const curatedFeed = curateFeedProducts(savedFeed, normalizedSavedInterests);
       setProducts(curatedFeed);
       setCurrentIndex(Math.min(saved.feedIndex || 0, Math.max(curatedFeed.length - 1, 0)));
 
@@ -1669,11 +1705,20 @@ const App: React.FC = () => {
   }, [adminEnabled, openRoomscanEnabled]);
 
   useEffect(() => {
-    if (!allProducts.length) return;
+    if (!allProducts.length) {
+      setProducts([]);
+      setCurrentIndex(0);
+      return;
+    }
 
-    setProducts(curateFeedProducts(allProducts));
-    setCurrentIndex(0);
-  }, [blockedTags, userPrefs.interests]);
+    const curated = curateFeedProducts(allProducts);
+    setProducts(curated);
+
+    setCurrentIndex((prev) => {
+      if (!curated.length) return 0;
+      return Math.min(prev, curated.length - 1);
+    });
+  }, [allProducts, blockedTags, userPrefs.interests, activeSeoPreset]);
 
   useEffect(() => {
     closeProductOverlay({ restoreCheckout: false });
@@ -1885,13 +1930,15 @@ const App: React.FC = () => {
       }
 
       setAllProducts(out);
-      setProducts(finalFeed);
+
+      const curatedFeed = curateFeedProducts(out, interests);
+      setProducts(curatedFeed);
       setCursor(nextCursor);
       setHasMore(false);
       setCurrentIndex(0);
 
       if (opts.navigate !== false) setView("browsing");
-      return finalFeed;
+      return curatedFeed;
     } catch (e) {
       console.error("Firestore load failed:", e);
       if (opts.navigate !== false) setView("interests");
@@ -1933,7 +1980,7 @@ const App: React.FC = () => {
       setCurrentIndex(i => i + 1);
       return;
     }
-    openProductOverlay(currentProduct, { view: "browsing", source: "feed" });
+    openProductOverlay(currentProduct, { view: "browsing", source: activeSeoPreset?.source ?? "feed" });
   };
 
   function openProductOverlay(
@@ -3608,6 +3655,19 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {activeSeoPreset && (
+                  <div className="relative z-10 mx-auto max-w-[420px] px-4 pt-3">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="text-sm font-semibold text-slate-900">
+                        {activeSeoPreset.label}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Picked for this guide page. Swipe to save what fits your space.
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div
                   className="relative z-10 flex items-start justify-center px-3 pt-3"
