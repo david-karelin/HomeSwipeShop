@@ -449,7 +449,7 @@ const DisclosureScreen = ({ onBack }: { onBack: () => void }) => (
   </div>
 );
 
-const AboutScreen = ({ onBack }: { onBack: () => void }) => (
+const AboutScreen = ({ onBack, onNavigate }: { onBack: () => void; onNavigate: (view: AppState, source?: string) => void }) => (
   <div className="p-6 bg-white min-h-full">
     <div className="flex items-start justify-between mb-6">
       <div>
@@ -484,6 +484,55 @@ const AboutScreen = ({ onBack }: { onBack: () => void }) => (
           and complete your purchase on third-party sites.
         </p>
       </section>
+
+      <div className="mt-10 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+        <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+          Decor Guides
+        </div>
+
+        <h3 className="mt-2 text-xl font-bold text-slate-900">
+          Explore ideas by space and budget
+        </h3>
+
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Browse quick guides for bedrooms, dorms, and small apartments.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <a
+            href="/bedroom-decor-under-50"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("bedroomDecorUnder50", "decor_guides");
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-800 transition hover:bg-slate-100"
+          >
+            Bedroom Decor Under $50
+          </a>
+
+          <a
+            href="/dorm-room-decor-ideas"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("dormRoomDecorIdeas", "decor_guides");
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-800 transition hover:bg-slate-100"
+          >
+            Dorm Room Decor Ideas
+          </a>
+
+          <a
+            href="/small-apartment-decor"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("smallApartmentDecor", "decor_guides");
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-800 transition hover:bg-slate-100"
+          >
+            Small Apartment Decor
+          </a>
+        </div>
+      </div>
     </div>
   </div>
 );
@@ -3334,7 +3383,7 @@ const App: React.FC = () => {
   if (view === "privacy") return <PrivacyScreen onBack={() => goView("profile", "privacy_close")} />;
   if (view === "terms") return <TermsScreen onBack={() => goView("profile", "terms_close")} />;
   if (view === "disclosure") return <DisclosureScreen onBack={() => goView("profile", "disclosure_close")} />;
-  if (view === "about") return <AboutScreen onBack={() => goView("profile", "about_close")} />;
+  if (view === "about") return <AboutScreen onBack={() => goView("profile", "about_close")} onNavigate={goView} />;
   if (view === "contact") return <ContactScreen onBack={() => goView("profile", "contact_close")} />;
 
   // SEO landing pages
