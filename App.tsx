@@ -161,6 +161,11 @@ const saveBlockedTags = (tags: string[]) => {
   localStorage.setItem(BLOCKED_TAGS_KEY, JSON.stringify(tags));
 };
 
+const toStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => (typeof item === "string" ? item : String(item)));
+};
+
 const loadTagScores = (): TagScores => {
   try { return JSON.parse(localStorage.getItem("tagScores") || "{}"); }
   catch { return {}; }
@@ -1183,7 +1188,8 @@ const App: React.FC = () => {
   const actionToastTimeoutRef = useRef<number | null>(null);
   const prevViewRef = useRef(view);
   const productOverlayScrollRef = useRef<HTMLDivElement | null>(null);
-  const blockedSet = useMemo(() => new Set(blockedTags), [blockedTags]);
+  const normalizedBlockedTags = useMemo(() => toStringArray(blockedTags), [blockedTags]);
+  const blockedSet = useMemo(() => new Set(normalizedBlockedTags), [normalizedBlockedTags]);
 
   // Reset scroll to top when product overlay opens
   useEffect(() => {
@@ -3193,9 +3199,14 @@ const App: React.FC = () => {
   const savedCount = userPrefs.wishlist.length + userPrefs.cart.length;
   const primaryKeywords = (userPrefs.persona.styleKeywords ?? []).slice(0, 5);
   const showMore = liked.slice(0, 4);
-  const avoidedSource =
-    userPrefs.persona.dislikedFeatures.length ? userPrefs.persona.dislikedFeatures : avoided;
-  const showLess = Array.from(new Set([...(blockedTags ?? []), ...avoidedSource])).slice(0, 4);
+  const avoidedSource = toStringArray(
+    userPrefs.persona.dislikedFeatures.length
+      ? userPrefs.persona.dislikedFeatures
+      : avoided
+  );
+  const showLess = Array.from(
+    new Set([...normalizedBlockedTags, ...avoidedSource])
+  ).slice(0, 4);
   const summaryLine =
     topRooms[0] && topCategories[0]
       ? `${vibe} picks with a focus on ${topRooms[0].toLowerCase()} upgrades and ${topCategories[0].toLowerCase()} that fit your budget.`
@@ -4337,12 +4348,12 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {Array.from(new Set(avoidedSource)).map((t) => {
-                    const active = blockedSet.has(t);
+                  {Array.from(new Set(avoidedSource)).map((tag) => {
+                    const active = blockedSet.has(tag);
                     return (
                       <button
-                        key={t}
-                        onClick={() => toggleBlockedTag(t)}
+                        key={tag}
+                        onClick={() => toggleBlockedTag(tag)}
                         className={
                           active
                             ? "px-4 py-2 rounded-full text-xs font-black bg-rose-600 text-white shadow-sm"
@@ -4350,7 +4361,7 @@ const App: React.FC = () => {
                         }
                         title={active ? "Hidden from feed" : "Tap to hide from feed"}
                       >
-                        {active ? `Hidden: ${t}` : t}
+                        {active ? `Hidden: ${tag}` : tag}
                       </button>
                     );
                   })}

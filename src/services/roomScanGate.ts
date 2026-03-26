@@ -140,7 +140,7 @@ function normalizeDetections(
     .filter((detection) => Boolean(detection.className));
 }
 
-function normalizeLabels(predictions: mobilenet.ClassificationResult[]) {
+function normalizeLabels(predictions: Array<{ className: string; probability: number }>) {
   return predictions
     .map((prediction) => String(prediction.className || "").trim())
     .filter(Boolean);

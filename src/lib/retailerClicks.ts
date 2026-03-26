@@ -28,7 +28,8 @@ export type ProductOverlaySource =
   | "bag_sheet"
   | "checkout"
   | "shortlist_bag"
-  | "shortlist_saved";
+  | "shortlist_saved"
+  | "discover_tap";
 
 export type ProductOverlayContext = {
   view: ProductOverlayView;
