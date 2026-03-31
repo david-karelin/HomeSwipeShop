@@ -10,6 +10,9 @@ export type RoomScanAnalysis = {
   oneSentenceSummary: string;
   productIdeas?: Array<{ title: string; category: string; searchKeywords: string[]; why: string }>;
   debug?: any;
+  /** Rich semantic analysis from Gemini Vision (when available) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  geminiAnalysis?: any;
 };
 
 function downscaleToCanvas(file: File, maxSide = 640): Promise<HTMLCanvasElement> {

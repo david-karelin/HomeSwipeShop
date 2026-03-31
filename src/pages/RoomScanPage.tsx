@@ -8,6 +8,10 @@ import {
   type RoomScanAnalysis,
 } from "../services/localRoomScan";
 import { validateRoomScanImage } from "../services/roomScanGate";
+import {
+  analyzeRoomWithGemini,
+  geminiToRoomScanAnalysis,
+} from "../services/geminiVisionAnalysis";
 
 function buildRoomScanShareUrl() {
   const u = new URL(window.location.href);
@@ -46,8 +50,8 @@ const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promis
 
 const scanSteps = [
   "Checking image",
-  "Reading room vibe",
-  "Matching upgrades",
+  "Reading vibe",
+  "Matching picks",
 ];
 
 async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -158,8 +162,13 @@ export default function RoomScanPage({
   const [shareNote, setShareNote] = useState<string>("");
 
   const [screen, setScreen] = useState<"main" | "preview">("main");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const captureCanvasRef = useRef<HTMLCanvasElement>(null);
   const hadAnyPicksRef = useRef(false);
   const emailCtaShownRef = useRef(false);
 
@@ -231,7 +240,7 @@ export default function RoomScanPage({
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "Seligo.AI RoomScan",
+          title: "Seligo RoomScan",
           text: "Try this RoomScan — it curates decor picks from a room photo.",
           url: shareUrl,
         });
@@ -246,7 +255,7 @@ export default function RoomScanPage({
       await navigator.clipboard.writeText(shareUrl);
       setShareNote("Link copied ✅");
     } catch {
-      setShareNote("Couldn’t share automatically — copy the URL from the address bar.");
+      setShareNote("Couldn't share automatically — copy the URL from the address bar.");
     }
   };
 
@@ -279,6 +288,77 @@ export default function RoomScanPage({
   };
 
   const onPick = (f?: File | null) => pickFile(f ?? null);
+
+  // ─── In-app camera (getUserMedia) ───────────────────────────────────────────
+  const openCamera = async () => {
+    setCameraError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      // Browser doesn't support getUserMedia — fall back to file input
+      cameraRef.current?.click();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 960 } },
+      });
+      streamRef.current = stream;
+      setCameraOpen(true);
+      // Attach stream to video element after state update paints the element
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      });
+    } catch {
+      // Permission denied or no camera — fall back to native file input
+      cameraRef.current?.click();
+    }
+  };
+
+  const closeCamera = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOpen(false);
+    setCameraError(null);
+    if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = captureCanvasRef.current;
+    if (!video || !canvas) return;
+
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 960;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    closeCamera();
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        pickFile(new File([blob], `room-scan-${Date.now()}.jpg`, { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      0.92
+    );
+  };
+
+  // Auto-open camera immediately when page mounts (cal.ai-style UX)
+  useEffect(() => {
+    void openCamera();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Stop camera stream on unmount
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -393,7 +473,7 @@ export default function RoomScanPage({
         setProgress(0);
         setRoomScanReason(
           gate.reason ||
-            "This doesn’t look like a room photo. Try a wider shot that shows your bed, desk, wall, shelf, or room corner."
+            "This doesn't look like a room photo. Try a wider shot that shows your bed, desk, wall, shelf, or room corner."
         );
 
         void Firestore.logEvent({
@@ -415,11 +495,29 @@ export default function RoomScanPage({
 
       setProgress(34);
       setScanStage("analyzing");
-      const a = await withTimeout(
-        analyzeRoomLocally(file, roomText),
-        25000,
-        "Local AI scan"
-      );
+
+      // Try Gemini Vision first (CLIP-like semantic analysis), fall back to local TF.js
+      let a: RoomScanAnalysis;
+      const geminiResult = await withTimeout(
+        analyzeRoomWithGemini(file, roomText),
+        20000,
+        "Gemini vision"
+      ).catch(() => null);
+
+      if (geminiResult) {
+        const avoidTags: string[] = [];
+        const text = roomText.toLowerCase();
+        if (text.includes("no clutter") || text.includes("declutter")) avoidTags.push("cluttered");
+        if (text.includes("no black")) avoidTags.push("black-heavy");
+        a = geminiToRoomScanAnalysis(geminiResult, avoidTags) as RoomScanAnalysis;
+      } else {
+        a = await withTimeout(
+          analyzeRoomLocally(file, roomText),
+          25000,
+          "Local AI scan"
+        );
+      }
+
       setAnalysis(a);
       setProgress(72);
       setScanStage("matching");
@@ -471,92 +569,31 @@ export default function RoomScanPage({
     resetInputs();
 
     hadAnyPicksRef.current = false;
-    pickImpRef.current.clear(); // clear dedupe set on local reset
+    pickImpRef.current.clear();
   };
 
   const handleScanAgain = () => {
-    // ✅ reset pick impression dedupe
     pickImpRef.current.clear();
     resetLocalScanUI();
     onScanAgain?.();
   };
 
+  // ─── Inline scan overlay (rendered inside the photo zone) ───────────────────
   const overlayVisible = loading || scanStatus === "success";
   const showScanline = loading;
   const scanStageLabel =
     scanStatus === "success"
-      ? "Scan complete ✅"
+      ? "Done ✓"
       : scanStage === "checking"
-        ? "Checking image…"
+        ? "Checking…"
         : scanStage === "analyzing"
-          ? "Reading room vibe…"
+          ? "Reading vibe…"
           : scanStage === "matching"
-            ? "Matching upgrades…"
+            ? "Matching picks…"
             : "Scanning…";
 
-  const ScanOverlay = overlayVisible ? (
+  const ScanOverlayContent = overlayVisible ? (
     <>
-      <div
-        className="seligo-scangrid absolute inset-0 opacity-30"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, rgba(14,165,233,.35) 1px, transparent 1px), linear-gradient(to bottom, rgba(14,165,233,.25) 1px, transparent 1px)",
-          backgroundSize: "20px 20px",
-          animation: loading ? "seligo-grid 1.2s linear infinite" : "none",
-          mixBlendMode: "multiply",
-        }}
-      />
-      <div
-        className="seligo-glow absolute inset-0"
-        style={{
-          background: "radial-gradient(circle at 50% 35%, rgba(14,165,233,.35), transparent 55%)",
-          animation: loading ? "seligo-glow 1.4s ease-in-out infinite" : "seligo-glow 2.4s ease-in-out infinite",
-        }}
-      />
-      {showScanline && (
-        <div
-          className="seligo-scanline absolute left-0 right-0 h-10"
-          style={{
-            background:
-              "linear-gradient(to bottom, transparent, rgba(34,197,94,.25), rgba(14,165,233,.55), rgba(34,197,94,.25), transparent)",
-            boxShadow: "0 0 20px rgba(14,165,233,.35)",
-            animation: "seligo-scanY 1.1s linear infinite",
-          }}
-        />
-      )}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-3">
-        <div
-          className={`text-xs font-semibold text-white px-2 py-1 rounded-lg ${
-            scanStatus === "success" ? "bg-emerald-600" : "bg-black/55"
-          }`}
-        >
-          {scanStageLabel}
-        </div>
-
-        <div className="flex-1 h-2 rounded-full bg-white/25 overflow-hidden">
-          <div
-            className="h-full rounded-full"
-            style={{ width: `${progress}%`, background: "var(--seligo-primary)" }}
-          />
-        </div>
-
-        <div className="text-xs font-semibold text-white px-2 py-1 rounded-lg bg-black/55 tabular-nums">
-          {scanStatus === "success" ? "Done" : `${progress}%`}
-        </div>
-      </div>
-    </>
-  ) : null;
-
-  const ImageBlock = (
-    <div
-      className={`relative overflow-hidden bg-slate-100 ${
-        scanStatus === "success"
-          ? "ring-4 ring-emerald-100 ring-inset"
-          : roomScanReason
-            ? "ring-2 ring-rose-200 ring-inset"
-            : ""
-      }`}
-    >
       <style>{`
         @keyframes seligo-scanY {
           0% { transform: translateY(-30%); opacity: 0; }
@@ -569,56 +606,120 @@ export default function RoomScanPage({
           100% { background-position: 40px 40px; }
         }
         @keyframes seligo-glow {
-          0%, 100% { opacity: .25; }
-          50% { opacity: .5; }
+          0%, 100% { opacity: .18; }
+          50% { opacity: .42; }
         }
         @media (prefers-reduced-motion: reduce) {
           .seligo-scanline, .seligo-scangrid, .seligo-glow { animation: none !important; }
         }
       `}</style>
+      <div
+        className="seligo-scangrid absolute inset-0"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, rgba(14,165,233,.25) 1px, transparent 1px), linear-gradient(to bottom, rgba(14,165,233,.18) 1px, transparent 1px)",
+          backgroundSize: "22px 22px",
+          animation: loading ? "seligo-grid 1.2s linear infinite" : "none",
+          mixBlendMode: "multiply",
+          opacity: 0.35,
+        }}
+      />
+      <div
+        className="seligo-glow absolute inset-0"
+        style={{
+          background: "radial-gradient(circle at 50% 38%, rgba(14,165,233,.28), transparent 55%)",
+          animation: loading ? "seligo-glow 1.4s ease-in-out infinite" : "seligo-glow 2.6s ease-in-out infinite",
+        }}
+      />
+      {showScanline && (
+        <div
+          className="seligo-scanline absolute left-0 right-0 h-10"
+          style={{
+            background:
+              "linear-gradient(to bottom, transparent, rgba(34,197,94,.18), rgba(14,165,233,.48), rgba(34,197,94,.18), transparent)",
+            boxShadow: "0 0 18px rgba(14,165,233,.28)",
+            animation: "seligo-scanY 1.1s linear infinite",
+          }}
+        />
+      )}
+      {/* Status bar at bottom of photo */}
+      <div className="absolute bottom-0 left-0 right-0 flex items-center gap-2 px-3 py-2.5 bg-gradient-to-t from-black/50 to-transparent">
+        <span
+          className={`text-[11px] font-bold text-white px-2.5 py-1 rounded-full backdrop-blur-sm ${
+            scanStatus === "success" ? "bg-emerald-600/85" : "bg-black/55"
+          }`}
+        >
+          {scanStageLabel}
+        </span>
+        <div className="flex-1 h-1.5 rounded-full bg-white/20 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${progress}%`, background: "var(--seligo-primary)" }}
+          />
+        </div>
+        <span className="text-[11px] font-bold text-white tabular-nums bg-black/55 backdrop-blur-sm px-2 py-1 rounded-full">
+          {scanStatus === "success" ? "100%" : `${progress}%`}
+        </span>
+      </div>
+    </>
+  ) : null;
 
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(251,146,60,0.12),transparent_55%)]" />
-      <div className="pointer-events-none absolute inset-6 rounded-[1.5rem] border border-white/60" />
-      <div className="pointer-events-none absolute left-6 right-6 top-6 h-12 rounded-t-[1.5rem] border-x border-t border-orange-300/55" />
-      <div className="pointer-events-none absolute left-6 right-6 bottom-6 h-12 rounded-b-[1.5rem] border-x border-b border-orange-300/55" />
-
+  // ─── Shared photo zone ───────────────────────────────────────────────────────
+  const PhotoZone = (
+    <div
+      className={`relative overflow-hidden bg-slate-100 ${
+        scanStatus === "success"
+          ? "ring-2 ring-inset ring-emerald-400/60"
+          : roomScanReason
+            ? "ring-2 ring-inset ring-rose-300"
+            : ""
+      }`}
+      style={{ aspectRatio: "4/3" }}
+    >
       {previewUrl ? (
         <button
           type="button"
           onClick={() => setScreen("preview")}
-          className="relative w-full text-left select-none"
-          title="Expand room photo"
+          className="absolute inset-0 w-full h-full"
+          title="Expand photo"
         >
           <img
             src={previewUrl}
             alt="Room preview"
-            className={`w-full aspect-[3/4] object-contain bg-slate-100 transition-transform duration-300 ${loading ? "scale-[1.02]" : ""}`}
-            style={{
-              filter: loading ? "contrast(1.05) saturate(1.08)" : "none",
-            }}
+            className="w-full h-full object-cover transition-all duration-300"
+            style={{ filter: loading ? "contrast(1.04) saturate(1.06)" : "none" }}
           />
-
-          <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-white/88 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600 backdrop-blur-sm border border-white/70 shadow-sm">
-            Expand photo
-          </div>
+          {!loading && !overlayVisible && (
+            <div className="absolute top-3 right-3 rounded-full bg-black/35 backdrop-blur-sm px-2.5 py-1 text-[11px] font-semibold text-white">
+              Expand ↗
+            </div>
+          )}
         </button>
       ) : (
-        <div className="relative flex aspect-[3/4] w-full items-end justify-center p-5 text-center bg-[linear-gradient(180deg,#f8fafc_0%,#e2e8f0_100%)]">
-          <div className="max-w-[82%] rounded-2xl bg-white/80 px-4 py-3 shadow-sm backdrop-blur border border-white/80">
-            <div className="text-sm font-black text-slate-900">Center your room</div>
-            <div className="mt-1 text-xs text-slate-500 leading-5">
-              Show the bed, desk, wall, shelf, or corner — not a product close-up.
-            </div>
+        <button
+          type="button"
+          className="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-50 to-slate-100 hover:from-orange-50/50 hover:to-slate-100 transition-colors"
+          onClick={() => uploadRef.current?.click()}
+        >
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm border border-slate-200">
+            <svg className="h-7 w-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
           </div>
-        </div>
+          <div className="text-center">
+            <p className="text-[13px] font-bold text-slate-700">Tap to upload a room photo</p>
+            <p className="text-xs text-slate-400 mt-0.5">Bedroom · desk · shelf · any corner</p>
+          </div>
+        </button>
       )}
-
-      {ScanOverlay}
+      {ScanOverlayContent}
     </div>
   );
 
   return (
     <div className="min-h-0 h-full flex flex-col bg-[#fffaf6]">
+      {/* Hidden file inputs */}
       <input
         ref={cameraRef}
         type="file"
@@ -627,7 +728,6 @@ export default function RoomScanPage({
         className="hidden"
         onChange={(e) => onPick(e.target.files?.[0])}
       />
-
       <input
         ref={uploadRef}
         type="file"
@@ -636,706 +736,530 @@ export default function RoomScanPage({
         onChange={(e) => onPick(e.target.files?.[0])}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar px-4 pt-4 pb-[104px] space-y-4">
-          {screen === "preview" ? (
-            <>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setScreen("main")}
-                  className="p-2 rounded-2xl hover:bg-slate-100 select-none"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </button>
+      <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
 
-                <div className="flex-1">
-                  <div className="text-lg font-semibold leading-tight">RoomScan Preview</div>
-                  <div className="text-xs text-slate-500">Confirm the scan or tweak the prompt.</div>
-                </div>
-              </div>
-
-              <div
-                className={`relative overflow-hidden rounded-[2rem] border bg-slate-100 ${
-                  scanStatus === "success" ? "border-emerald-300 ring-4 ring-emerald-100" : "border-slate-200"
-                }`}
+        {/* ── PREVIEW SCREEN ──────────────────────────────────────────────── */}
+        {screen === "preview" ? (
+          <div className="px-4 pt-4 pb-[104px] space-y-3">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setScreen("main")}
+                className="p-2.5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 select-none transition-colors"
               >
-                {previewUrl ? (
+                <ArrowLeft className="h-5 w-5 text-slate-700" />
+              </button>
+              <div className="flex-1">
+                <div className="text-base font-black text-slate-900">Room photo</div>
+                <div className="text-xs text-slate-500">Review or adjust before scanning</div>
+              </div>
+            </div>
+
+            {/* Full photo */}
+            <div className={`overflow-hidden rounded-[2rem] border ${
+              scanStatus === "success" ? "border-emerald-300 ring-2 ring-emerald-100" : "border-slate-200"
+            }`}>
+              {previewUrl ? (
+                <div className="relative">
                   <img
                     src={previewUrl}
-                    alt="Room preview full"
-                    className="w-full aspect-[4/3] object-cover bg-slate-100"
-                    style={{ filter: loading ? "contrast(1.1) saturate(1.15)" : "none" }}
+                    alt="Room preview"
+                    className="w-full object-cover"
+                    style={{ aspectRatio: "4/3", filter: loading ? "contrast(1.08) saturate(1.1)" : "none" }}
                   />
-                ) : (
-                  <div className="h-56 flex items-center justify-center text-slate-500">No image selected</div>
-                )}
-                {ScanOverlay}
-              </div>
-
-              <div className="rounded-[1.75rem] border border-slate-200/80 p-4 space-y-4 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                    Refine your scan
-                  </div>
-                  <div className="mt-1 text-lg font-black text-slate-900">
-                    Adjust the photo or prompt
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-1.5 text-sm font-semibold text-slate-800">Add optional notes</div>
-                  <textarea
-                    value={roomText}
-                    onChange={(e) => {
-                      setRoomText(e.target.value);
-                      setScanStatus("idle");
-                    }}
-                    className="w-full min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50/60 p-3.5 text-slate-900 outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
-                    placeholder="Small bedroom, low light, cozy modern vibe, neutral colors…"
-                  />
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Tip: mention size, lighting, colors, and what you want to change.
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => cameraRef.current?.click()}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3.5 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
-                  >
-                    Take photo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => uploadRef.current?.click()}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3.5 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
-                  >
-                    Upload photo
-                  </button>
-                </div>
-
-                {file && (
-                  <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2.5 border border-slate-200/70">
-                    <div className="text-xs text-slate-600 truncate">
-                      Selected: <span className="font-semibold">{file.name}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-slate-500 hover:text-slate-800 select-none"
-                      onClick={() => pickFile(null)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-
-                {analysis && (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-900">RoomScan Summary</div>
-                      <div className="text-[11px] text-slate-500">Applied to feed</div>
-                    </div>
-
-                    <div className="mt-2 text-slate-700">{analysis.oneSentenceSummary}</div>
-
-                    <div className="mt-3 space-y-1 text-slate-700">
-                      <div><span className="font-semibold text-slate-900">Vibe:</span> {analysis.vibeTags.join(", ") || "—"}</div>
-                      <div><span className="font-semibold text-slate-900">Categories:</span> {analysis.recommendedCategories.join(", ") || "—"}</div>
-                      {!!analysis.avoidTags?.length && (
-                        <div><span className="font-semibold text-slate-900">Avoid:</span> {analysis.avoidTags.join(", ")}</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
-                  onClick={scanStatus === "success" ? handleScanAgain : runScan}
-                  className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
-                  style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-                >
-                  {scanStatus === "success"
-                    ? "Scan again"
-                    : scanStatus === "error"
-                      ? "Try another room photo"
-                      : loading
-                        ? "Scanning your room..."
-                        : "Scan my room"}
-                </button>
-
-                <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
-                  Room-only AI • personalized picks • renter-friendly upgrades
-                </div>
-
-                {!modelReady && !error && (
-                  <div className="mt-1.5 text-center text-[10px] text-slate-400">
-                    Loading AI engine… first run may take a moment
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="rounded-[2rem] border border-orange-100 bg-white/90 p-5 shadow-sm backdrop-blur-xl">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-orange-600">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      AI RoomScan
-                    </div>
-
-                    <h2 className="mt-3 text-[28px] font-black tracking-[-0.04em] text-slate-900">
-                      Scan your room
-                    </h2>
-
-                    <p className="mt-2 max-w-[32rem] text-sm leading-relaxed text-slate-600">
-                      Get affordable, renter-friendly picks based on your actual space.
-                    </p>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {[
-                        "Room-only scan",
-                        "Best for bedrooms + desks",
-                        "Mostly under $50",
-                      ].map((item) => (
-                        <div
-                          key={item}
-                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600"
-                        >
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-3 text-[12px] font-semibold text-slate-500">
-                      Works best with wide room shots — not product close-ups, selfies, or random objects.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={onGoExplore}
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100"
-                    aria-label="Close"
-                  >
-                    <X className="h-5 w-5 text-slate-600" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-[2rem] border border-slate-200 bg-white shadow-sm overflow-hidden">
-                {ImageBlock}
-
-                <div className="px-4 pt-3 pb-4">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => cameraRef.current?.click()}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
-                    >
-                      Take photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => uploadRef.current?.click()}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
-                    >
-                      Upload photo
-                    </button>
-                  </div>
-
-                  {file && (
-                    <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2.5 border border-slate-200/70">
-                      <div className="text-xs text-slate-600 truncate">
-                        Selected: <span className="font-semibold">{file.name}</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-slate-500 hover:text-slate-800 select-none"
-                        onClick={() => pickFile(null)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )}
-
-                  {error && (
-                    <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
-                    onClick={scanStatus === "success" ? handleScanAgain : runScan}
-                    className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.24)]"
-                    style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
-                  >
-                    {scanStatus === "success"
-                      ? "Scan again"
-                      : scanStatus === "error"
-                        ? "Try another room photo"
-                        : loading
-                          ? "Scanning your room..."
-                          : "Scan my room"}
-                  </button>
-
-                  <div className="mt-2 text-center text-[10px] font-medium text-slate-500">
-                    Room-only AI • personalized picks • renter-friendly upgrades
-                  </div>
-
-                  {!modelReady && !error && (
-                    <div className="mt-1.5 text-center text-[10px] text-slate-400">
-                      Loading AI engine… first run may take a moment
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                  Best results
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
-                      Good
-                    </div>
-                    <div className="mt-2 text-sm font-semibold text-slate-900">
-                      Wide room shot
-                    </div>
-                    <div className="mt-1 text-xs leading-relaxed text-slate-600">
-                      Show the bed, desk, wall, shelf, or room corner.
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-rose-700">
-                      Skip
-                    </div>
-                    <div className="mt-2 text-sm font-semibold text-slate-900">
-                      Close-ups / selfies
-                    </div>
-                    <div className="mt-1 text-xs leading-relaxed text-slate-600">
-                      Avoid product shots, faces, pets, screenshots, or random objects.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                    Scan progress
-                  </div>
-
-                  <div className="text-[11px] font-bold text-slate-500">
-                    {scanStatus === "success" ? "Complete" : loading ? `${progress}%` : "Ready"}
-                  </div>
-                </div>
-
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200/80">
-                  <div
-                    className="h-full rounded-full transition-all duration-500 shadow-sm"
-                    style={{
-                      width: `${scanStatus === "success" ? 100 : progress}%`,
-                      background: "linear-gradient(90deg, var(--seligo-cta), #f97316)",
-                    }}
-                  />
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  {scanSteps.map((step, index) => {
-                    const active = index <= currentScanStep;
-                    const isCurrent = index === currentScanStep && loading;
-
-                    return (
-                      <div key={step} className="flex items-center gap-3">
-                        <div
-                          className={[
-                            "h-3 w-3 rounded-full transition-all",
-                            active ? "bg-[var(--seligo-cta)]" : "bg-slate-200",
-                            isCurrent ? "ring-4 ring-orange-100" : "",
-                          ].join(" ")}
-                        />
-                        <div
-                          className={
-                            active
-                              ? "text-sm font-semibold text-slate-800"
-                              : "text-sm text-slate-400"
-                          }
-                        >
-                          {step}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {roomScanReason ? (
-                <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 p-4">
-                  <div className="font-black text-rose-700">Use a real room photo</div>
-                  <div className="mt-1 text-sm text-rose-700/80">{roomScanReason}</div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {[
-                      "Show the bed",
-                      "Show the desk",
-                      "Show a wider corner",
-                      "Avoid selfies",
-                      "Avoid product close-ups",
-                    ].map((tip) => (
-                      <div
-                        key={tip}
-                        className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-700"
-                      >
-                        {tip}
-                      </div>
-                    ))}
-                  </div>
-
-                  {showRoomScanDebug && gateInfo ? (
-                    <div className="mt-3 rounded-2xl border border-rose-100 bg-white/80 p-3">
-                      <div className="text-[11px] font-black uppercase tracking-[0.18em] text-rose-500">
-                        Scan check
-                      </div>
-
-                      <div className="mt-2 text-xs text-slate-600">
-                        Room score: <span className="font-black text-slate-900">{gateInfo.roomScore}</span>
-                      </div>
-
-                      {!!gateInfo.objects.length && (
-                        <div className="mt-2 text-xs text-slate-600">
-                          Detected:{" "}
-                          <span className="font-semibold text-slate-800">
-                            {gateInfo.objects.join(", ")}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {showRoomScanDebug && (scanStatus === "success" || scanStatus === "error") && gateInfo ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    RoomScan debug
-                  </div>
-
-                  <div className="mt-3 space-y-2 text-xs text-slate-700">
-                    <div>
-                      <span className="font-black text-slate-900">Room score:</span> {gateInfo.roomScore}
-                    </div>
-                    <div>
-                      <span className="font-black text-slate-900">Objects:</span>{" "}
-                      {gateInfo.objects.length ? gateInfo.objects.join(", ") : "—"}
-                    </div>
-                    <div>
-                      <span className="font-black text-slate-900">Labels:</span>{" "}
-                      {gateInfo.labels.length ? gateInfo.labels.join(", ") : "—"}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {scanStatus === "success" && !showClearedCard && (
-                <div className="animate-in fade-in zoom-in duration-300 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm font-bold">
-                  ✅ Scan complete — your feed was updated.
-                </div>
-              )}
-
-              {error && !roomScanReason && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
-                  We couldn’t scan that image. Try another room photo.
-                </div>
-              )}
-
-              {pickStatus === "loading" && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                  Curating picks for your room…
-                </div>
-              )}
-
-              {pickStatus === "error" && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
-                  Couldn’t generate picks right now — try scanning again.
-                </div>
-              )}
-
-              {showClearedCard ? (
-                <div className="pt-1">
-                  <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="p-5 bg-gradient-to-br from-slate-50 to-white">
-                      <div className="flex items-start gap-3">
-                        <div className="shrink-0 rounded-2xl bg-emerald-50 p-3 border border-emerald-100">
-                          <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-lg font-semibold text-slate-900">
-                            Curated list cleared ✅
-                          </div>
-                          <div className="text-sm text-slate-600 mt-1">
-                            You’re all set — your feed stays updated based on your scan. Want another pass or jump back into Explore?
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex gap-3">
-                        <button
-                          type="button"
-                          onClick={handleScanAgain}
-                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                          style={{ backgroundColor: "var(--seligo-primary)" }}
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          Scan again
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={onGoExplore}
-                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold bg-white border border-slate-200 text-slate-900"
-                        >
-                          Explore
-                          <ArrowRight className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-2">
-                        <button
-                          onClick={handleShare}
-                          className="w-full rounded-xl py-3 font-extrabold text-sm text-white"
-                          style={{ background: "var(--seligo-cta)" }}
-                        >
-                          Share RoomScan
-                        </button>
-                      </div>
-
-                      {shareNote ? (
-                        <div className="mt-2 text-xs text-slate-500 text-center">{shareNote}</div>
-                      ) : null}
-                    </div>
-                  </div>
+                  {ScanOverlayContent}
                 </div>
               ) : (
-                <>
-                  {pickStatus === "ready" && picks.length > 0 && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <div className="font-extrabold text-slate-900">Top picks for your room</div>
-                        <button
-                          onClick={onGoExplore}
-                          className="text-xs font-black text-[var(--seligo-primary)] hover:underline"
-                        >
-                          See more →
-                        </button>
-                      </div>
-
-                      <div className="text-xs text-slate-500">
-                        Based on your room photo, detected vibe, and budget-friendly fit.
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void onEmailPicks();
-                        }}
-                        className="w-full h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
-                      >
-                        Email me these picks
-                      </button>
-
-                      <div className="space-y-3">
-                        {picks.map(({ product, rationale }) => (
-                          <div key={product.id} className="relative flex gap-3 border border-slate-200 rounded-2xl p-3 bg-slate-50/40">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void Firestore.logEvent({
-                                  type: "pick_dismiss",
-                                  productId: product.id,
-                                  source: "roomscan_pick",
-                                  view: "roomscan",
-                                  meta: {
-                                    category: product.category ?? "",
-                                    tags: Array.isArray(product.tags) ? product.tags : [],
-                                    price: Number(product.price ?? 0),
-                                  },
-                                }).catch(console.warn);
-
-                                onDismissPick(product.id);
-                              }}
-                              className="absolute top-2 right-2 w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-                              aria-label="Dismiss"
-                              title="Dismiss"
-                            >
-                              <X className="w-4 h-4 text-slate-600" />
-                            </button>
-
-                            <img
-                              src={product.imageUrl}
-                              className="w-16 h-16 rounded-xl object-cover bg-slate-100"
-                              alt={product.name}
-                            />
-
-                            <div className="min-w-0 flex-1 pr-10">
-                              <div className="font-black text-slate-900 truncate">{product.name}</div>
-                              <div className="text-[11px] text-slate-500 truncate">
-                                {(product.brand || "Seligo.AI")} • ${Number(product.price || 0).toFixed(2)}
-                              </div>
-
-                              <ul className="mt-2 text-[11px] text-slate-700 list-disc pl-4 space-y-1">
-                                {rationale.map((r, idx) => (
-                                  <li key={idx}>{r}</li>
-                                ))}
-                              </ul>
-
-                              <div className="mt-3 flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    void Firestore.logEvent({
-                                      type: "pick_save",
-                                      productId: product.id,
-                                      source: "roomscan_pick",
-                                      view: "roomscan",
-                                      meta: {
-                                        category: product.category ?? "",
-                                        tags: Array.isArray(product.tags) ? product.tags : [],
-                                        price: Number(product.price ?? 0),
-                                      },
-                                    }).catch(console.warn);
-                                    void onSavePick(product);
-                                  }}
-                                  className="flex-1 rounded-xl py-2 bg-slate-100 text-slate-900 font-extrabold text-xs"
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    void onBagPick(product);
-                                  }}
-                                  className="flex-1 rounded-xl py-2 text-white font-extrabold text-xs"
-                                  style={{ background: "var(--seligo-cta)" }}
-                                >
-                                  Add to Bag
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {pickStatus === "ready" && picks.length === 0 && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                      Scan applied — tap <b>See more →</b> to explore your updated feed.
-                    </div>
-                  )}
-                </>
+                <div className="h-52 flex items-center justify-center text-slate-400 text-sm bg-slate-50">
+                  No image selected
+                </div>
               )}
+            </div>
 
-              {(pickStatus === "ready" || scanStatus === "success") && !showClearedCard && (
+            {/* Controls card */}
+            <div className="rounded-[2rem] border border-slate-200/80 bg-white p-5 space-y-4 shadow-sm">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">
+                  Optional notes
+                </div>
+                <textarea
+                  value={roomText}
+                  onChange={(e) => { setRoomText(e.target.value); setScanStatus("idle"); }}
+                  className="w-full min-h-[80px] rounded-2xl border border-slate-200 bg-slate-50/60 p-3 text-[14px] text-slate-900 outline-none focus:ring-2 focus:ring-[var(--seligo-primary)] resize-none"
+                  placeholder="Small bedroom, cozy modern, low light, neutral tones…"
+                />
+                <p className="mt-1.5 text-[11px] text-slate-400">Mention size, lighting, colors, or what you want to change.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void openCamera()}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Take photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => uploadRef.current?.click()}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Upload photo
+                </button>
+              </div>
+              {error && (
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
+                  {error}
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
+                onClick={scanStatus === "success" ? handleScanAgain : runScan}
+                className="w-full h-[52px] rounded-2xl text-white text-[15px] font-black shadow-[0_10px_28px_rgba(251,146,60,0.22)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+                style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+              >
+                {scanStatus === "success" ? "↺ Scan again" : loading ? `Scanning… ${progress}%` : "Scan my room →"}
+              </button>
+              {!modelReady && !error && (
+                <p className="text-center text-[11px] text-slate-400">Loading AI engine…</p>
+              )}
+            </div>
+          </div>
+
+        ) : (
+          /* ── MAIN SCREEN ──────────────────────────────────────────────────── */
+          <div className="pb-[104px] space-y-3">
+
+            {/* ── Hero card with photo zone ──── */}
+            <div className="bg-white border-b border-slate-100 shadow-sm">
+              {/* Hero text */}
+              <div className="px-5 pt-5 pb-4 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-orange-600">
+                    <Sparkles className="h-3 w-3" />
+                    RoomScan
+                  </div>
+                  <h2 className="mt-2.5 text-[24px] font-black tracking-[-0.035em] text-slate-900 leading-[1.08]">
+                    Picks for your<br />actual room
+                  </h2>
+                  <p className="mt-2 text-[13px] text-slate-500 leading-relaxed max-w-[260px]">
+                    Upload a room photo — get affordable, renter-friendly décor matched to your space.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {["Mostly under $50", "Bedrooms & desks", "Renter-friendly"].map((t) => (
+                      <span
+                        key={t}
+                        className="rounded-full bg-slate-50 border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={onGoExplore}
-                  className="mt-3 w-full rounded-2xl px-4 py-3 font-extrabold border border-slate-200 bg-white hover:bg-slate-50 text-slate-900"
+                  className="shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors"
+                  aria-label="Close"
                 >
-                  Go to Explore →
+                  <X className="h-4 w-4 text-slate-600" />
                 </button>
-              )}
-
-              <div className="rounded-[1.75rem] border border-slate-200/80 p-4 space-y-4 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                    Add a room photo
-                  </div>
-                  <div className="mt-1 text-lg font-black text-slate-900">
-                    Help Seligo understand your space
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => cameraRef.current?.click()}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3.5 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
-                  >
-                    Take photo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => uploadRef.current?.click()}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3.5 text-sm font-semibold text-slate-800 select-none hover:bg-slate-100 transition-colors"
-                  >
-                    Upload photo
-                  </button>
-                </div>
-
-                {file && (
-                  <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2.5 border border-slate-200/70">
-                    <div className="text-xs text-slate-600 truncate">
-                      Selected: <span className="font-semibold">{file.name}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-slate-500 hover:text-slate-800 select-none"
-                      onClick={() => pickFile(null)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-
-                <div>
-                  <div className="mb-1.5 text-sm font-semibold text-slate-800">Add optional notes</div>
-                  <textarea
-                    value={roomText}
-                    onChange={(e) => {
-                      setRoomText(e.target.value);
-                      setScanStatus("idle");
-                    }}
-                    className="w-full min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50/60 p-3.5 text-slate-900 outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
-                    placeholder="Small bedroom, low light, cozy modern vibe, neutral colors, want better storage near the desk…"
-                  />
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Mention lighting, colors, budget, or what part of the room needs help.
-                  </div>
-                </div>
               </div>
 
-              {analysis && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold text-slate-900">RoomScan Summary</div>
-                    <div className="text-[11px] text-slate-500">Applied to feed</div>
+              {/* Photo zone */}
+              {PhotoZone}
+
+              {/* Photo action buttons */}
+              <div className="px-4 py-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void openCamera()}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors select-none"
+                >
+                  <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Camera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => uploadRef.current?.click()}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors select-none"
+                >
+                  <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Upload
+                </button>
+              </div>
+            </div>
+
+            {/* ── Error: bad photo ───────── */}
+            {roomScanReason && (
+              <div className="mx-4 rounded-[1.75rem] border border-rose-200 bg-rose-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 rounded-xl bg-rose-100 p-2 mt-0.5">
+                    <X className="h-4 w-4 text-rose-600" />
                   </div>
-
-                  <div className="mt-2 text-slate-700">{analysis.oneSentenceSummary}</div>
-
-                  <div className="mt-3 space-y-1 text-slate-700">
-                    <div><span className="font-semibold text-slate-900">Vibe:</span> {analysis.vibeTags.join(", ") || "—"}</div>
-                    <div><span className="font-semibold text-slate-900">Categories:</span> {analysis.recommendedCategories.join(", ") || "—"}</div>
-                    {!!analysis.avoidTags?.length && (
-                      <div><span className="font-semibold text-slate-900">Avoid:</span> {analysis.avoidTags.join(", ")}</div>
-                    )}
+                  <div>
+                    <div className="font-black text-rose-800 text-[13px]">Use a real room photo</div>
+                    <div className="mt-1 text-xs text-rose-600/90 leading-relaxed">{roomScanReason}</div>
                   </div>
                 </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {["Bed or desk area", "Full room corner", "Wall + shelf view"].map((tip) => (
+                    <span key={tip} className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-700">
+                      {tip}
+                    </span>
+                  ))}
+                </div>
+                {showRoomScanDebug && gateInfo && (
+                  <div className="mt-3 rounded-2xl bg-white/70 border border-rose-100 px-3 py-2 text-xs text-slate-600">
+                    Room score: <strong>{gateInfo.roomScore}</strong>
+                    {gateInfo.objects.length > 0 && <> · Detected: {gateInfo.objects.join(", ")}</>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(error && !roomScanReason) && (
+              <div className="mx-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+                Couldn't scan this photo — try another room shot.
+              </div>
+            )}
+
+            {/* ── Scan CTA card ──────────── */}
+            <div className="mx-4 rounded-[2rem] border border-slate-200/80 bg-white p-5 shadow-sm space-y-4">
+
+              {/* Step indicators */}
+              <div className="flex items-center">
+                {scanSteps.map((step, index) => {
+                  const done = index < currentScanStep || scanStatus === "success";
+                  const active = index === currentScanStep && loading;
+                  const upcoming = !done && !active;
+                  return (
+                    <React.Fragment key={step}>
+                      <div className="flex flex-col items-center gap-1.5 flex-1">
+                        <div
+                          className={[
+                            "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300",
+                            done ? "bg-emerald-500 text-white" :
+                            active ? "bg-[var(--seligo-cta)] text-white ring-4 ring-orange-100 scale-110" :
+                            "bg-slate-100 text-slate-400",
+                          ].join(" ")}
+                        >
+                          {done ? "✓" : index + 1}
+                        </div>
+                        <span className={`text-[10px] font-semibold text-center leading-tight ${upcoming ? "text-slate-400" : active ? "text-[var(--seligo-cta)]" : "text-slate-600"}`}>
+                          {step}
+                        </span>
+                      </div>
+                      {index < scanSteps.length - 1 && (
+                        <div className={`h-0.5 flex-1 mb-5 transition-all duration-500 ${done ? "bg-emerald-400" : "bg-slate-200"}`} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {/* Optional room notes */}
+              <div>
+                <div className="mb-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Optional — describe your room
+                </div>
+                <textarea
+                  value={roomText}
+                  onChange={(e) => { setRoomText(e.target.value); setScanStatus("idle"); }}
+                  className="w-full min-h-[72px] rounded-2xl border border-slate-200 bg-slate-50/60 p-3 text-[13px] text-slate-900 outline-none focus:ring-2 focus:ring-[var(--seligo-primary)] resize-none placeholder:text-slate-400"
+                  placeholder="Small bedroom, cozy modern vibe, low light, want better desk area…"
+                />
+              </div>
+
+              {/* Scan button */}
+              <button
+                type="button"
+                disabled={scanStatus === "success" ? false : !canScan || loading || !modelReady}
+                onClick={scanStatus === "success" ? handleScanAgain : runScan}
+                className="w-full h-[52px] rounded-2xl text-white text-[15px] font-black tracking-[-0.02em] shadow-[0_10px_28px_rgba(251,146,60,0.22)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-[0.99]"
+                style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+              >
+                {scanStatus === "success"
+                  ? "↺ Scan again"
+                  : loading
+                    ? `Scanning… ${progress}%`
+                    : !canScan
+                      ? "Upload a photo first"
+                      : !modelReady
+                        ? "Loading AI…"
+                        : "Scan my room →"}
+              </button>
+
+              {!modelReady && !error && (
+                <p className="text-center text-[11px] text-slate-400">
+                  AI engine loading — first run may take a moment
+                </p>
               )}
-            </>
-          )}
+            </div>
+
+            {/* ── Success banner ─────────── */}
+            {scanStatus === "success" && !showClearedCard && picks.length === 0 && (
+              <div className="mx-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-2.5 text-sm font-bold text-emerald-800">
+                <span className="text-base">✅</span>
+                <span>Scan complete — your feed has been updated.</span>
+              </div>
+            )}
+
+            {/* ── Picks loading ──────────── */}
+            {pickStatus === "loading" && (
+              <div className="mx-4 rounded-2xl border border-slate-200 bg-white p-4 flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-[var(--seligo-cta)] animate-spin shrink-0" />
+                <span className="text-sm font-semibold text-slate-700">Curating picks for your room…</span>
+              </div>
+            )}
+
+            {pickStatus === "error" && (
+              <div className="mx-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+                Couldn't generate picks right now — try scanning again.
+              </div>
+            )}
+
+            {/* ── Picks grid ────────────── */}
+            {pickStatus === "ready" && picks.length > 0 && !showClearedCard && (
+              <div className="mx-4 rounded-[2rem] border border-slate-200 bg-white overflow-hidden shadow-sm">
+                {/* Picks header */}
+                <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-black text-slate-900 text-[15px]">Picks for your room</div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {picks.length} curated find{picks.length === 1 ? "" : "s"} based on your space
+                      </div>
+                    </div>
+                    <button
+                      onClick={onGoExplore}
+                      className="text-xs font-black text-[var(--seligo-primary)] hover:underline shrink-0"
+                    >
+                      See more →
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void onEmailPicks()}
+                    className="mt-3 w-full h-11 rounded-2xl bg-[var(--seligo-cta)] hover:brightness-105 text-white text-sm font-extrabold transition-all active:scale-[0.99]"
+                  >
+                    Email me these picks
+                  </button>
+                </div>
+
+                {/* Pick cards */}
+                <div className="divide-y divide-slate-100">
+                  {picks.map(({ product, rationale }) => (
+                    <div key={product.id} className="relative p-4 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void Firestore.logEvent({
+                            type: "pick_dismiss",
+                            productId: product.id,
+                            source: "roomscan_pick",
+                            view: "roomscan",
+                            meta: {
+                              category: product.category ?? "",
+                              tags: Array.isArray(product.tags) ? product.tags : [],
+                              price: Number(product.price ?? 0),
+                            },
+                          }).catch(console.warn);
+                          onDismissPick(product.id);
+                        }}
+                        className="absolute top-3 right-3 w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                        aria-label="Dismiss"
+                      >
+                        <X className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="w-20 h-20 rounded-2xl object-cover bg-slate-100 shrink-0"
+                      />
+
+                      <div className="min-w-0 flex-1 pr-8">
+                        <div className="font-black text-slate-900 text-sm leading-tight line-clamp-2">
+                          {product.name}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5 font-semibold">
+                          ${Number(product.price || 0).toFixed(2)}
+                        </div>
+                        {rationale.length > 0 && (
+                          <div className="mt-1 text-[11px] text-slate-500 leading-relaxed line-clamp-2">
+                            {rationale[0]}
+                          </div>
+                        )}
+                        <div className="mt-2.5 flex gap-2">
+                          <button
+                            onClick={() => {
+                              void Firestore.logEvent({
+                                type: "pick_save",
+                                productId: product.id,
+                                source: "roomscan_pick",
+                                view: "roomscan",
+                                meta: {
+                                  category: product.category ?? "",
+                                  tags: Array.isArray(product.tags) ? product.tags : [],
+                                  price: Number(product.price ?? 0),
+                                },
+                              }).catch(console.warn);
+                              void onSavePick(product);
+                            }}
+                            className="flex-1 rounded-xl py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-extrabold transition-colors"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => void onBagPick(product)}
+                            className="flex-1 rounded-xl py-2 text-white text-xs font-extrabold transition-all active:scale-[0.98]"
+                            style={{ background: "var(--seligo-cta)" }}
+                          >
+                            Add to Bag
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Cleared card ───────────── */}
+            {showClearedCard && (
+              <div className="mx-4 rounded-[2rem] border border-slate-200 bg-white overflow-hidden shadow-sm">
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="font-black text-slate-900 text-[15px]">All cleared!</div>
+                      <div className="text-xs text-slate-500 mt-0.5">Feed updated with your scan results.</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleScanAgain}
+                      className="flex-1 rounded-2xl px-4 py-3 text-sm font-bold text-white flex items-center justify-center gap-1.5 transition-all"
+                      style={{ backgroundColor: "var(--seligo-primary)" }}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Scan again
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onGoExplore}
+                      className="flex-1 rounded-2xl px-4 py-3 text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-900 flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      Explore
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleShare}
+                    className="mt-2 w-full rounded-2xl py-3 text-sm font-extrabold text-white transition-all active:scale-[0.99]"
+                    style={{ background: "var(--seligo-cta)" }}
+                  >
+                    Share RoomScan
+                  </button>
+                  {shareNote && (
+                    <p className="mt-1.5 text-xs text-slate-500 text-center">{shareNote}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Go explore CTA ─────────── */}
+            {(pickStatus === "ready" || scanStatus === "success") && !showClearedCard && (
+              <button
+                type="button"
+                onClick={onGoExplore}
+                className="mx-4 w-[calc(100%-2rem)] rounded-2xl border border-slate-200 bg-white py-3.5 font-extrabold text-sm text-slate-900 hover:bg-slate-50 transition-colors"
+              >
+                Go to Explore →
+              </button>
+            )}
+
+            {/* ── Debug panel ────────────── */}
+            {showRoomScanDebug && (scanStatus === "success" || scanStatus === "error") && gateInfo && (
+              <div className="mx-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs space-y-1">
+                <div className="font-black text-slate-500 uppercase tracking-wide text-[10px] mb-2">RoomScan debug</div>
+                <div>Room score: <strong>{gateInfo.roomScore}</strong></div>
+                <div>Objects: {gateInfo.objects.join(", ") || "—"}</div>
+                <div>Labels: {gateInfo.labels.join(", ") || "—"}</div>
+              </div>
+            )}
+
+          </div>
+        )}
       </div>
+
+      {/* ── In-app camera overlay ──────────────────────────────────────── */}
+      {cameraOpen && (
+        <div className="fixed inset-0 z-[1000] bg-black flex flex-col">
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-4 pt-12 pb-4">
+            <button
+              type="button"
+              onClick={closeCamera}
+              className="p-2.5 rounded-2xl bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors"
+              aria-label="Close camera"
+            >
+              <X className="h-5 w-5 text-white" />
+            </button>
+            <p className="text-white text-sm font-semibold tracking-wide">Point at your room</p>
+            <div className="w-10" />
+          </div>
+
+          {/* Viewfinder */}
+          <div className="flex-1 relative overflow-hidden">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            {/* Corner guides */}
+            {[
+              "top-4 left-4 border-t-2 border-l-2 rounded-tl-2xl",
+              "top-4 right-4 border-t-2 border-r-2 rounded-tr-2xl",
+              "bottom-4 left-4 border-b-2 border-l-2 rounded-bl-2xl",
+              "bottom-4 right-4 border-b-2 border-r-2 rounded-br-2xl",
+            ].map((cls, i) => (
+              <div key={i} className={`absolute w-8 h-8 border-white/60 ${cls}`} />
+            ))}
+            {cameraError && (
+              <div className="absolute inset-x-4 bottom-6 rounded-2xl bg-black/60 backdrop-blur-sm px-4 py-3 text-sm text-white text-center font-semibold">
+                {cameraError}
+              </div>
+            )}
+          </div>
+
+          {/* Capture button */}
+          <div className="pb-14 pt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={capturePhoto}
+              aria-label="Capture photo"
+              className="w-20 h-20 rounded-full border-4 border-white/40 bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 active:scale-95 transition-all"
+            >
+              <div className="w-14 h-14 rounded-full bg-white shadow-lg" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden canvas used to capture frames from getUserMedia stream */}
+      <canvas ref={captureCanvasRef} className="hidden" />
     </div>
   );
 }

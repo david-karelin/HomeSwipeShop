@@ -1331,6 +1331,7 @@ const App: React.FC = () => {
   const [blockedTags, setBlockedTags] = useState<string[]>(() => loadBlockedTags());
   const [roomScanPicks, setRoomScanPicks] = useState<RoomScanPick[]>([]);
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [showTuneModal, setShowTuneModal] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
   const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
   const [roomscanLeadRequestNonce, setRoomscanLeadRequestNonce] = useState(0);
@@ -1490,6 +1491,14 @@ const App: React.FC = () => {
     setShowBagSheet(false);
     setView(next);
     void Firestore.logEvent({ type: "view_change", source, view: next }).catch(console.warn);
+  };
+
+  // Direct-to-feed navigation — skips interests gate
+  const goHome = (source = "nav") => {
+    window.history.pushState({}, "", "/");
+    void Firestore.logEvent({ type: "view_change", source, view: "browsing" }).catch(console.warn);
+    const allIds = VIBE_CATEGORIES.map((c) => c.id);
+    void startDiscovery(mapVibeCategoriesToInterests(allIds));
   };
 
   // Handle browser back/forward buttons
@@ -1925,7 +1934,7 @@ const App: React.FC = () => {
     setCurrentIndex(0);
     setCursor(null);
     setHasMore(true);
-    setView("interests");
+    void startDiscovery(mapVibeCategoriesToInterests(VIBE_CATEGORIES.map((c) => c.id)));
   };
 
   type StartDiscoveryOpts = { navigate?: boolean };
@@ -2059,12 +2068,23 @@ const App: React.FC = () => {
       return curatedFeed;
     } catch (e) {
       console.error("Firestore load failed:", e);
-      if (opts.navigate !== false) setView("interests");
+      if (opts.navigate !== false) setView("browsing");
       return [];
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Auto-start: skip interests gate, go straight to feed on first load
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (adminEnabled || openRoomscanEnabled) return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("view") || sp.get("open")) return;
+    if (view !== "auth") return;
+    const allIds = VIBE_CATEGORIES.map((c) => c.id);
+    void startDiscovery(mapVibeCategoriesToInterests(allIds));
+  }, []);
 
   const handleSwipe = (direction: 'left' | 'right') => {
     const currentProduct = products[currentIndex];
@@ -2794,70 +2814,129 @@ const App: React.FC = () => {
   const buildRationaleSmart = (p: Product, analysis: RoomScanAnalysis) => {
     const objs = getDetectedObjects(analysis);
     const palette = getPalette(analysis);
+    const gemini = analysis.geminiAnalysis as any | undefined;
 
     const pTagsRaw = Array.isArray(p.tags) ? p.tags.map(norm) : [];
     const pTags = pTagsRaw.map(aliasTag);
     const pCat = norm(p.category);
 
-    const vibeRaw = (analysis.vibeTags || []).map(norm);
-    const vibe = vibeRaw.map(aliasTag);
-    const recTagsRaw = (analysis.recommendedTags || []).map(norm);
-    const recTags = recTagsRaw.map(aliasTag);
-    const recCats = (analysis.recommendedCategories || []).map(norm);
-    const avoid = (analysis.avoidTags || []).map(norm).map(aliasTag);
-
-    const missingRug = !hasAny(objs, ["rug"]);
-    const missingPlant = !hasAny(objs, ["potted plant"]);
-    const missingLamp = !hasAny(objs, ["lamp"]);
-    const hasBed = hasAny(objs, ["bed"]);
-
     const reasons: string[] = [];
 
-    if (analysis.roomType) reasons.push(`Made for a ${prettyLabel(analysis.roomType)} refresh.`);
-    else if (hasBed) reasons.push("Bedroom detected — optimizing for cozy + functional upgrades.");
+    // ── Gemini-powered deep rationale ──────────────────────────────────────
+    if (gemini) {
+      const roomType: string = gemini.roomType ?? "";
+      const colors: string[] = gemini.dominantColors ?? [];
+      const style: string[] = gemini.styleKeywords ?? [];
+      const missing: string[] = gemini.missingItems ?? [];
+      const lighting: string = gemini.lightingCondition ?? "";
+      const vibe: string = gemini.overallVibe ?? "";
 
-    if (missingRug && (pCat.includes("rug") || pTags.some(t => t.includes("rug")))) {
-      reasons.push("No rug detected — adding one anchors the room and makes it feel warmer.");
-    }
-    if (missingPlant && (pCat.includes("plant") || pTags.some(t => t.includes("plant")))) {
-      reasons.push("No plants detected — greenery adds life + contrast without clutter.");
-    }
-    if (
-      missingLamp &&
-      (pCat.includes("light") || pTags.some((t) => t.includes("lamp") || t.includes("light") || t.includes("lighting")))
-    ) {
-      reasons.push("Lighting looks limited — a lamp boosts warmth and ambiance.");
-    }
-    if (hasBed && (pCat.includes("bed") || pTags.some(t => t.includes("pillow") || t.includes("throw")))) {
-      reasons.push("Bed is the focal point — upgraded bedding/pillows give the biggest visual payoff.");
-    }
-    if (hasBed && (pCat.includes("wall") || pTags.some(t => t.includes("art") || t.includes("wall")))) {
-      reasons.push("Great above-bed upgrade — adds a focal point and makes the space feel finished.");
-    }
+      // Find the Gemini category match whose category best aligns with this product
+      const categoryMatches: Array<{ category: string; reason: string; keywords: string[] }> =
+        gemini.productCategoryMatches ?? [];
+      const matched = categoryMatches.find((m) => {
+        const mc = norm(m.category);
+        return (
+          pCat.includes(mc) ||
+          mc.includes(pCat) ||
+          m.keywords.some((k: string) => pTags.includes(norm(k)))
+        );
+      });
 
-    const tagUniverse = [...vibe, ...recTags];
-    const tagHits = intersects(pTags, tagUniverse).slice(0, 3);
-    if (tagHits.length) reasons.push(`Matches your scan vibe: ${tagHits.map(prettyLabel).join(", ")}.`);
+      if (matched?.reason) {
+        reasons.push(matched.reason);
+      } else if (vibe) {
+        const colorStr = colors.slice(0, 2).join(" and ");
+        const styleStr = style.slice(0, 2).join(", ");
+        reasons.push(
+          `Your ${styleStr || roomType} space has ${colorStr || "a distinctive"} palette — this fits the overall vibe: ${vibe}.`
+        );
+      }
 
-    const paletteTealish = palette.some((h) => {
-      const hex = h.replace("#", "");
-      if (hex.length !== 6) return false;
-      const r = parseInt(hex.slice(0, 2), 16);
-      const g = parseInt(hex.slice(2, 4), 16);
-      const b = parseInt(hex.slice(4, 6), 16);
-      return g > r && b > r && g > 80 && b > 80;
-    });
-    const tealish = vibe.includes("teal") || paletteTealish;
+      // Lighting-specific insight
+      const isLightingProduct =
+        pCat.includes("light") ||
+        pTags.some((t) => t.includes("lamp") || t.includes("light") || t.includes("sconce"));
+      if (isLightingProduct) {
+        if (lighting.includes("dim")) {
+          reasons.push("Dim lighting detected — this adds the warm glow your space is missing.");
+        } else if (lighting.includes("cool")) {
+          reasons.push("Cool-toned light detected — a warm lamp brings balance and makes the room feel lived-in.");
+        }
+      }
 
-    if (tealish && (pCat.includes("light") || pTags.includes("warm"))) {
-      reasons.push("Your room reads cool/teal — warm lighting balances it and feels more inviting.");
+      // Missing item match
+      const missingHit = missing.find((item) => {
+        const m = norm(item).replace(/\s+/g, "-");
+        return pTags.includes(m) || pCat.includes(m) || m.includes(pCat);
+      });
+      if (missingHit) {
+        reasons.push(`Your scan flagged "${missingHit}" as missing — this fills exactly that gap.`);
+      }
+
+      // Color harmony insight
+      if (colors.length > 0 && pTags.length > 0) {
+        const colorKeywords = colors.map((c) => c.toLowerCase());
+        const warmRoom = colorKeywords.some((c) =>
+          ["beige", "cream", "warm", "tan", "sand", "wood", "oak", "walnut", "honey"].some((w) => c.includes(w))
+        );
+        const darkRoom = colorKeywords.some((c) =>
+          ["black", "charcoal", "dark", "navy", "deep", "espresso"].some((w) => c.includes(w))
+        );
+        if (warmRoom && pTags.some((t) => t.includes("warm") || t.includes("natural") || t.includes("wood"))) {
+          reasons.push(`Warm tones (${colors[0]}) detected — this natural material ties right into your palette.`);
+        } else if (darkRoom && pTags.some((t) => t.includes("light") || t.includes("bright") || t.includes("white"))) {
+          reasons.push(`Dark palette detected — this lighter piece creates contrast and prevents the space from feeling heavy.`);
+        }
+      }
+    } else {
+      // ── Fallback: local TF.js-based rationale ──────────────────────────────
+      const vibeRaw = (analysis.vibeTags || []).map(norm);
+      const vibe = vibeRaw.map(aliasTag);
+      const recTagsRaw = (analysis.recommendedTags || []).map(norm);
+      const recTags = recTagsRaw.map(aliasTag);
+      const recCats = (analysis.recommendedCategories || []).map(norm);
+      const avoid = (analysis.avoidTags || []).map(norm).map(aliasTag);
+
+      const missingRug = !hasAny(objs, ["rug"]);
+      const missingPlant = !hasAny(objs, ["potted plant"]);
+      const missingLamp = !hasAny(objs, ["lamp"]);
+      const hasBed = hasAny(objs, ["bed"]);
+
+      if (analysis.roomType) reasons.push(`Made for a ${prettyLabel(analysis.roomType)} refresh.`);
+      else if (hasBed) reasons.push("Bedroom detected — optimizing for cozy + functional upgrades.");
+
+      if (missingRug && (pCat.includes("rug") || pTags.some(t => t.includes("rug"))))
+        reasons.push("No rug detected — adding one anchors the room and makes it feel warmer.");
+      if (missingPlant && (pCat.includes("plant") || pTags.some(t => t.includes("plant"))))
+        reasons.push("No plants detected — greenery adds life and contrast without clutter.");
+      if (missingLamp && (pCat.includes("light") || pTags.some((t) => t.includes("lamp") || t.includes("light"))))
+        reasons.push("Lighting looks limited — a lamp boosts warmth and ambiance.");
+      if (hasBed && (pCat.includes("bed") || pTags.some(t => t.includes("pillow") || t.includes("throw"))))
+        reasons.push("Bed is the focal point — upgraded bedding/pillows give the biggest visual payoff.");
+      if (hasBed && (pCat.includes("wall") || pTags.some(t => t.includes("art") || t.includes("wall"))))
+        reasons.push("Great above-bed upgrade — adds a focal point and makes the space feel finished.");
+
+      const tagHits = intersects(pTags, [...vibe, ...recTags]).slice(0, 3);
+      if (tagHits.length) reasons.push(`Matches your scan vibe: ${tagHits.map(prettyLabel).join(", ")}.`);
+
+      const paletteTealish = palette.some((h) => {
+        const hex = h.replace("#", "");
+        if (hex.length !== 6) return false;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return g > r && b > r && g > 80 && b > 80;
+      });
+      if ((vibe.includes("teal") || paletteTealish) && (pCat.includes("light") || pTags.includes("warm")))
+        reasons.push("Your room reads cool/teal — warm lighting balances it and feels more inviting.");
+
+      const catHit = recCats.find((c) => pCat.includes(c) || c.includes(pCat));
+      if (catHit) reasons.push(`Matches your scan category: ${prettyLabel(catHit)}.`);
+
+      const avoidHit = avoid.find((t) => pTags.includes(t));
+      if (avoidHit) reasons.push(`Avoids a dealbreaker style: ${prettyLabel(avoidHit)}.`);
     }
-
-    const catHit = recCats.find((c) => pCat.includes(c) || c.includes(pCat));
-    if (catHit) reasons.push(`Matches your scan category: ${prettyLabel(catHit)}.`);
-
-    const avoidHit = avoid.find((t) => pTags.includes(t));
-    if (avoidHit) reasons.push(`Avoids a dealbreaker style: ${prettyLabel(avoidHit)}.`);
 
     if (!reasons.length) {
       if (pCat) reasons.push(`Complements your space: ${prettyLabel(pCat)}.`);
@@ -3057,7 +3136,12 @@ const App: React.FC = () => {
       };
     });
 
-    const interestsToUse = mergedInterests.length ? mergedInterests : normalizeFeedInterestIds(userPrefs.interests);
+    const interestsToUse =
+      mergedInterests.length > 0
+        ? mergedInterests
+        : normalizeFeedInterestIds(userPrefs.interests).length > 0
+          ? normalizeFeedInterestIds(userPrefs.interests)
+          : mapVibeCategoriesToInterests(VIBE_CATEGORIES.map((c) => c.id)); // fallback: all categories
 
     const fetchCandidatesIgnoringSwipes = async (interests: string[], limit = 120) => {
       return filterLaunchCatalogProducts(
@@ -3429,10 +3513,8 @@ const App: React.FC = () => {
         : "Affordable, renter-friendly upgrades shaped by what you save, pass, and match.";
 
   const discoveryMessages = [
-    "Analyzing Interest Nodes...",
-    "Mapping Style Cartography...",
-    "Connecting to Product Catalog...",
-    "Finalizing Personalized Feed..."
+    "Finding your picks…",
+    "Building your feed…",
   ];
   const selectedView = selectedProductContext?.view ?? "browsing";
   const selectedSource = selectedProductContext?.source ?? "unknown";
@@ -3523,25 +3605,14 @@ const App: React.FC = () => {
   // Views
   if (view === 'auth' || view === 'interests') {
     return (
-      <>
-        <InterestsPage
-          initialSelectedIds={deriveSelectedVibeCategories(userPrefs.interests)}
-          isLoading={isLoading}
-          onHowItWorks={() => setShowHowItWorks(true)}
-          onRoomScan={() => goView("roomscan", "interests_roomscan_cta")}
-          onContinue={async (selectedIds) => {
-            const nextInterests = mapVibeCategoriesToInterests(selectedIds);
-            setUserPrefs((prev) => ({
-              ...prev,
-              interests: nextInterests,
-            }));
-            setShowHowItWorks(false);
-            await startDiscovery(nextInterests);
-          }}
-        />
-
-        <HowItWorksModal open={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
-      </>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#fffaf6] gap-4">
+        <img src={seligoLogo} alt="Seligo" className="w-11 h-11" />
+        <div className="relative w-10 h-10">
+          <div className="absolute inset-0 rounded-full border-2 border-slate-100" />
+          <div className="absolute inset-0 rounded-full border-2 border-t-[var(--seligo-cta)] animate-spin" />
+        </div>
+        <p className="text-sm font-semibold text-slate-500">Finding your picks…</p>
+      </div>
     );
   }
 
@@ -3555,7 +3626,7 @@ const App: React.FC = () => {
   if (view === "bedroomDecorUnder50") {
     return (
       <BedroomDecorUnder50Screen
-        onBack={() => goView("auth", "seo_page_close")}
+        onBack={() => goHome("seo_page_close")}
         onNavigate={goView}
       />
     );
@@ -3563,7 +3634,7 @@ const App: React.FC = () => {
   if (view === "dormRoomDecorIdeas") {
     return (
       <DormRoomDecorIdeasScreen
-        onBack={() => goView("auth", "seo_page_close")}
+        onBack={() => goHome("seo_page_close")}
         onNavigate={goView}
       />
     );
@@ -3571,7 +3642,7 @@ const App: React.FC = () => {
   if (view === "smallApartmentDecor") {
     return (
       <SmallApartmentDecorScreen
-        onBack={() => goView("auth", "seo_page_close")}
+        onBack={() => goHome("seo_page_close")}
         onNavigate={goView}
       />
     );
@@ -3596,7 +3667,7 @@ const App: React.FC = () => {
             <div className="relative shrink-0">
               <img
                 src={seligoLogo}
-                alt="Seligo.AI"
+                alt="Seligo"
                 className="w-10 h-10 rounded-xl object-cover shadow"
               />
               {isAlgorithmRunning && (
@@ -3608,7 +3679,7 @@ const App: React.FC = () => {
 
             <div className="min-w-0">
               <div className="font-black text-[17px] leading-tight text-slate-900 truncate">
-                Seligo.AI
+                Seligo
               </div>
               <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-[var(--seligo-accent)] truncate">
                 {isAlgorithmRunning ? "Algorithm refining…" : "ML active"}
@@ -3669,60 +3740,27 @@ const App: React.FC = () => {
         }}
       >
         {view === "discovering" && (
-          <div
-            className="min-h-[calc(100dvh-8rem)] bg-slate-900 relative overflow-hidden"
-          >
-            {/* Animated Background Pulse */}
-            <div className="absolute inset-0 bg-[var(--seligo-primary)]/5 animate-pulse" />
-
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-              {/* AI Brain Graphic */}
-              <div className="relative mb-12">
-                <div className="absolute inset-0 bg-[var(--seligo-primary)] rounded-full blur-3xl opacity-20 animate-pulse" />
-                <div className="relative w-32 h-32 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 shadow-2xl">
-                  <div className="absolute inset-0 border-t-2 border-[var(--seligo-primary)] rounded-full animate-spin duration-700" />
-                  <BrainCircuit className="w-16 h-16 text-[var(--seligo-primary)] animate-pulse" />
-                </div>
-
-                {/* Scanning Line Effect */}
-                <div className="absolute -left-12 -right-12 top-1/2 h-[1px] bg-gradient-to-r from-transparent via-[var(--seligo-primary)] to-transparent animate-[bounce_2s_infinite] opacity-50" />
-              </div>
-
-              <div className="relative z-10 space-y-6">
-                <h2 className="text-3xl font-black text-white tracking-tighter">AI Discovery Engine</h2>
-
-                <div className="flex flex-col items-center space-y-2">
-                  <p className="text-[var(--seligo-primary)] font-mono text-sm uppercase tracking-[0.3em] h-6">
-                    {discoveryMessages[discoveryStep]}
-                  </p>
-                  <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mt-4">
-                    <div
-                      className="h-full bg-[var(--seligo-primary)] transition-all duration-1000 ease-out"
-                      style={{ width: `${(discoveryStep + 1) * 25}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-12 grid grid-cols-2 gap-3 max-w-xs mx-auto">
-                  {userPrefs.interests.map((interestId, idx) => {
-                    const interestLabel = prettyLabel(interestId);
-                    return (
-                      <div
-                        key={interestId}
-                        className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 animate-in fade-in slide-in-from-bottom duration-500"
-                        style={{ animationDelay: `${idx * 200}ms` }}
-                      >
-                        <Activity className="w-3 h-3 text-[var(--seligo-accent)]" /> {interestLabel}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="absolute bottom-10 left-0 right-0 text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">
-                Personalizing your style experience...
-              </div>
+          <div className="flex min-h-[calc(100dvh-8rem)] flex-col items-center justify-center bg-[#fffaf6] p-8">
+            <img src={seligoLogo} alt="Seligo" className="mb-8 w-11 h-11" />
+            <div className="relative mb-6 w-12 h-12">
+              <div className="absolute inset-0 rounded-full border-2 border-slate-100" />
+              <div className="absolute inset-0 rounded-full border-2 border-t-[var(--seligo-cta)] animate-spin" />
             </div>
+            <p className="text-[15px] font-semibold text-slate-700">
+              {discoveryMessages[Math.min(discoveryStep, discoveryMessages.length - 1)]}
+            </p>
+            {userPrefs.interests.length > 0 && (
+              <div className="mt-5 flex flex-wrap justify-center gap-2 max-w-xs">
+                {userPrefs.interests.slice(0, 6).map((interestId) => {
+                  const cat = VIBE_CATEGORIES.find((c) => c.id === interestId);
+                  return cat ? (
+                    <div key={interestId} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                      {cat.emoji} {cat.label}
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -3767,9 +3805,13 @@ const App: React.FC = () => {
                         Saved {savedUpgradeCount} pick{savedUpgradeCount === 1 ? "" : "s"}
                       </div>
 
-                      <div className="text-[11px] text-slate-400">
-                        Curated for your style
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowTuneModal(true)}
+                        className="text-[11px] font-black text-[var(--seligo-primary)] hover:underline"
+                      >
+                        ✨ Tune feed
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -3853,7 +3895,7 @@ const App: React.FC = () => {
 
                     <div className="space-y-3">
                       <button
-                        onClick={() => goView("interests", "browse_end_change_interests")}
+                        onClick={() => setShowTuneModal(true)}
                         className="w-full rounded-2xl py-4 font-extrabold text-white transition-colors"
                         style={{ background: "var(--seligo-cta)" }}
                       >
@@ -3871,6 +3913,37 @@ const App: React.FC = () => {
               </div>
             )}
           </Screen>
+        )}
+
+        {/* Tune Feed Modal */}
+        {showTuneModal && (
+          <div className="fixed inset-0 z-[800]" onClick={() => setShowTuneModal(false)}>
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <div
+              className="absolute inset-x-0 bottom-0 flex flex-col max-h-[92svh] rounded-t-[2rem] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drag handle — fixed, doesn't scroll */}
+              <div className="shrink-0 flex justify-center pt-3 pb-1 bg-[#EEF2F7] rounded-t-[2rem]">
+                <div className="h-1.5 w-10 rounded-full bg-slate-300" />
+              </div>
+              {/* Scrollable body — sticky bottom inside here works correctly */}
+              <div className="overflow-y-auto flex-1">
+                <InterestsPage
+                  initialSelectedIds={deriveSelectedVibeCategories(userPrefs.interests)}
+                  isLoading={isLoading}
+                  onHowItWorks={() => { setShowTuneModal(false); setShowHowItWorks(true); }}
+                  onRoomScan={() => { setShowTuneModal(false); goView("roomscan", "tune_roomscan_cta"); }}
+                  onContinue={async (selectedIds) => {
+                    setShowTuneModal(false);
+                    const nextInterests = mapVibeCategoriesToInterests(selectedIds);
+                    setUserPrefs((prev) => ({ ...prev, interests: nextInterests }));
+                    await startDiscovery(nextInterests);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Product Details Modal Overlay */}
@@ -4650,7 +4723,7 @@ const App: React.FC = () => {
                   className="w-full py-4 rounded-2xl text-white font-black shadow-sm"
                   style={{ background: "var(--seligo-cta)" }}
                 >
-                  Share Seligo.AI
+                  Share Seligo
                 </button>
 
                 <button

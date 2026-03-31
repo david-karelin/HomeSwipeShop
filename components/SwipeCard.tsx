@@ -160,6 +160,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     if (el) {
       el.style.setProperty("--drag-x", String(dx));
     }
+    
 
     applyCardTransform(dx, limitedY, true);
   };
@@ -214,12 +215,8 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
     swipeTimeoutRef.current = window.setTimeout(() => {
       offsetRef.current = { x: 0, y: 0 };
-      const el = cardRef.current;
-      if (el) {
-        el.style.transition = "none";
-        el.style.transform = "translate3d(0px, 0px, 0px) rotate(0deg) scale(1)";
-      }
-
+      // Don't reset card position — the parent will unmount this card
+      // (new key from products[currentIndex]) so a reset would cause a visible flash
       if (dir === "right") {
         onSelectAction("wishlist");
       } else {
