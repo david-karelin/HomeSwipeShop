@@ -1,7 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || "";
-const ai = new GoogleGenAI({ apiKey });
 
 export type GeminiRoomAnalysis = {
   roomType: string;
@@ -66,6 +65,8 @@ export async function analyzeRoomWithGemini(
   userText = ""
 ): Promise<GeminiRoomAnalysis | null> {
   if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") return null;
+
+  const ai = new GoogleGenAI({ apiKey });
 
   try {
     const base64 = await fileToBase64(file);
