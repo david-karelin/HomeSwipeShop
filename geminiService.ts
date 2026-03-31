@@ -8,7 +8,8 @@ if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
   console.warn('⚠️ GEMINI API key not set. Set VITE_GEMINI_API_KEY in .env.local to enable Gemini features.');
 }
 
-const ai = new GoogleGenAI({ apiKey });
+const geminiEnabled = !!(apiKey && apiKey !== 'PLACEHOLDER_API_KEY');
+const ai = geminiEnabled ? new GoogleGenAI({ apiKey }) : null;
 
 const productSchema = {
   type: Type.ARRAY,
@@ -29,6 +30,7 @@ const productSchema = {
 };
 
 export const fetchProductsByInterests = async (interests: string[]): Promise<Product[]> => {
+  if (!ai) return [];
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -50,7 +52,8 @@ export const fetchProductsByInterests = async (interests: string[]): Promise<Pro
 
 export const fetchSimilarProducts = async (likedProducts: Product[]): Promise<Product[]> => {
   if (likedProducts.length === 0) return [];
-  
+  if (!ai) return [];
+
   const productNames = likedProducts.map(p => p.name).join(', ');
   try {
     const response = await ai.models.generateContent({
@@ -71,6 +74,7 @@ export const fetchSimilarProducts = async (likedProducts: Product[]): Promise<Pr
 };
 
 export const searchProducts = async (query: string): Promise<Product[]> => {
+  if (!ai) return [];
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
