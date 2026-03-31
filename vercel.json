@@ -9,6 +9,7 @@
     { "source": "/terms", "destination": "/" },
     { "source": "/disclosure", "destination": "/" },
     { "source": "/about", "destination": "/" },
-    { "source": "/contact", "destination": "/" }
+    { "source": "/contact", "destination": "/" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
