@@ -4,7 +4,7 @@ import type {
   RetailerClickView,
   RetailerPlacement,
 } from "./src/lib/retailerClicks";
-import { getBrowserAmazonAssocTag } from "./src/lib/affiliateConfig";
+import { getBrowserAmazonAssocTag, getBrowserWayfairAffiliateId } from "./src/lib/affiliateConfig";
 import {
   getProductPurchaseUrlWithTag,
   getResolvedPurchaseUrlWithTag,
@@ -12,6 +12,7 @@ import {
 } from "./retailerUrlUtils";
 
 const AMAZON_TAG = getBrowserAmazonAssocTag();
+const WAYFAIR_ID = getBrowserWayfairAffiliateId();
 
 export type RetailerLinkOptions = {
   source?: RetailerClickSource;
@@ -22,11 +23,11 @@ export type RetailerLinkOptions = {
 };
 
 export const getProductPurchaseUrl = (product: Product) => {
-  return getProductPurchaseUrlWithTag(product, AMAZON_TAG);
+  return getProductPurchaseUrlWithTag(product, AMAZON_TAG, WAYFAIR_ID);
 };
 
 export const getResolvedPurchaseUrl = (product: Product, preferredUrl?: string | null) => {
-  return getResolvedPurchaseUrlWithTag(product, preferredUrl, AMAZON_TAG);
+  return getResolvedPurchaseUrlWithTag(product, preferredUrl, AMAZON_TAG, WAYFAIR_ID);
 };
 
 export const getProductRetailerName = (product: Product) => {

@@ -85,6 +85,26 @@ const isAmazonHost = (hostname: string) => {
   return /^(.+\.)?amazon\.[a-z.]+$/.test(host);
 };
 
+const isWayfairHost = (hostname: string) => {
+  const host = hostname.toLowerCase();
+  return host === "www.wayfair.com" || host === "wayfair.com";
+};
+
+export const withWayfairAffiliateTag = (rawUrl: string, affiliateId?: string | null) => {
+  const normalizedUrl = normalizeHttpUrl(rawUrl);
+  const id = readOptionalString(affiliateId);
+  if (!normalizedUrl || !id) return normalizedUrl;
+
+  try {
+    const url = new URL(normalizedUrl);
+    if (!isWayfairHost(url.hostname)) return normalizedUrl;
+    url.searchParams.set("refid", id);
+    return url.toString();
+  } catch {
+    return normalizedUrl;
+  }
+};
+
 export const withAmazonAffiliateTag = (rawUrl: string, amazonTag?: string | null) => {
   const normalizedUrl = normalizeHttpUrl(rawUrl);
   const tag = normalizeAmazonTag(amazonTag);
@@ -103,13 +123,19 @@ export const withAmazonAffiliateTag = (rawUrl: string, amazonTag?: string | null
 
 export const getProductPurchaseUrlWithTag = (
   product: ProductLinkLike,
-  amazonTag?: string | null
+  amazonTag?: string | null,
+  wayfairId?: string | null
 ) => {
   const asinUrl = buildAmazonAsinUrl(product.asin ?? "", amazonTag);
   if (asinUrl) return asinUrl;
 
-  const purchaseUrl = withAmazonAffiliateTag(readOptionalString(product.purchaseUrl), amazonTag);
-  const fallbackUrl = withAmazonAffiliateTag(readOptionalString(product.url), amazonTag);
+  const rawPurchaseUrl = readOptionalString(product.purchaseUrl);
+  const rawFallbackUrl = readOptionalString(product.url);
+
+  const purchaseUrl =
+    withWayfairAffiliateTag(withAmazonAffiliateTag(rawPurchaseUrl, amazonTag), wayfairId);
+  const fallbackUrl =
+    withWayfairAffiliateTag(withAmazonAffiliateTag(rawFallbackUrl, amazonTag), wayfairId);
 
   return purchaseUrl || fallbackUrl || buildAmazonSearchUrl(product, amazonTag);
 };
@@ -117,9 +143,13 @@ export const getProductPurchaseUrlWithTag = (
 export const getResolvedPurchaseUrlWithTag = (
   product: ProductLinkLike,
   preferredUrl?: string | null,
-  amazonTag?: string | null
+  amazonTag?: string | null,
+  wayfairId?: string | null
 ) => {
-  return withAmazonAffiliateTag(readOptionalString(preferredUrl), amazonTag) || getProductPurchaseUrlWithTag(product, amazonTag);
+  const preferred = readOptionalString(preferredUrl);
+  const taggedPreferred =
+    withWayfairAffiliateTag(withAmazonAffiliateTag(preferred, amazonTag), wayfairId);
+  return taggedPreferred || getProductPurchaseUrlWithTag(product, amazonTag, wayfairId);
 };
 
 export const getUrlHostname = (value: unknown) => {

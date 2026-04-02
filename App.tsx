@@ -16,6 +16,7 @@ import {
   type RetailerClickSource,
 } from './src/lib/retailerClicks';
 import SwipeCard from './components/SwipeCard';
+import VerticalFeed from './components/VerticalFeed';
 import CheckoutLinksModal from './components/CheckoutLinksModal';
 import AdminScreen from './src/components/AdminScreen';
 import HowItWorksModal from './src/components/HowItWorksModal';
@@ -74,6 +75,16 @@ const DEFAULT_PREFS: UserPreferences = {
 };
 
 type TagScores = Record<string, number>;
+
+const CAT_TAG_MAP: Record<string, string[]> = {
+  "desk-setup": ["desk", "desk-setup", "workspace", "monitor", "organizer"],
+  "cozy-bedroom": ["bedroom", "cozy-bedroom", "bed", "pillow", "nightstand"],
+  "wall-decor": ["wall", "wall-decor", "wall-art", "poster", "print", "canvas"],
+  "lighting": ["lighting", "lamp", "light", "led", "bulb", "fairy-lights"],
+  "storage": ["storage", "organizer", "basket", "tray", "bin", "box", "shelf"],
+  "mirrors": ["mirror", "mirrors"],
+  "plants": ["plant", "plants", "succulent", "planter", "pot"],
+};
 
 type UndoEntry = {
   product: Product;
@@ -246,28 +257,25 @@ function NavItem({
     <button
       onClick={onClick}
       className="flex flex-col items-center justify-center gap-1 select-none"
-      style={{ width: 70 }}
+      style={{ minWidth: 64 }}
       aria-current={active ? "page" : undefined}
     >
       <div
-        className={`transition-colors ${active ? "text-[var(--seligo-primary)]" : "text-slate-300"}`}
+        className={`flex h-11 w-11 items-center justify-center rounded-[14px] transition-all duration-200 ${
+          active
+            ? "bg-[var(--seligo-primary)] text-white shadow-[0_4px_14px_rgba(14,165,233,0.38)]"
+            : "text-slate-500 hover:text-slate-700"
+        }`}
       >
         {icon}
       </div>
-
       <span
-        className={`text-[10px] font-extrabold uppercase tracking-[0.18em] transition-colors ${
-          active ? "text-[var(--seligo-primary)]" : "text-slate-300"
+        className={`text-[9px] font-extrabold uppercase tracking-[0.16em] transition-colors ${
+          active ? "text-[var(--seligo-primary)]" : "text-slate-500"
         }`}
       >
         {label}
       </span>
-
-      <div
-        className={`mt-1 h-[3px] w-8 rounded-full transition-all ${
-          active ? "bg-[var(--seligo-primary)] opacity-100" : "bg-transparent opacity-0"
-        }`}
-      />
     </button>
   );
 }
@@ -1332,7 +1340,16 @@ const App: React.FC = () => {
   const [roomScanPicks, setRoomScanPicks] = useState<RoomScanPick[]>([]);
   const [roomScanPickStatus, setRoomScanPickStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [showTuneModal, setShowTuneModal] = useState(false);
+  const [showSwipeTutorial, setShowSwipeTutorial] = useState(() => {
+    try { return !localStorage.getItem("seligo_swipe_tutorial_seen"); } catch { return true; }
+  });
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
+  const [noInteractionCount, setNoInteractionCount] = useState(0);
+  const [showScrollNudge, setShowScrollNudge] = useState(false);
+  const [getLinksNudgeDismissed, setGetLinksNudgeDismissed] = useState(false);
   const [postBuyLeadOpen, setPostBuyLeadOpen] = useState(false);
   const [roomscanLeadRequestNonce, setRoomscanLeadRequestNonce] = useState(0);
   const [leadSource, setLeadSource] = useState<LeadSource>("post_buy_panel");
@@ -1787,6 +1804,16 @@ const App: React.FC = () => {
     const visible = source.filter((product) => {
       if (isBlockedProduct(product)) return false;
       if (swipedRef.current.has(product.id)) return false;
+      if (activeCategory) {
+        const relatedTags = CAT_TAG_MAP[activeCategory] ?? [activeCategory];
+        const matchesCategory = product.category === activeCategory;
+        const productTags = Array.isArray(product.tags)
+          ? product.tags.map((t) => String(t).toLowerCase())
+          : [];
+        const matchesTags = productTags.some((t) => relatedTags.includes(t));
+        if (!matchesCategory && !matchesTags) return false;
+      }
+      if (maxPrice !== null && Number(product.price ?? 0) > maxPrice) return false;
       return true;
     });
 
@@ -1845,7 +1872,7 @@ const App: React.FC = () => {
       if (!curated.length) return 0;
       return Math.min(prev, curated.length - 1);
     });
-  }, [allProducts, blockedTags, userPrefs.interests, activeSeoPreset]);
+  }, [allProducts, blockedTags, userPrefs.interests, activeSeoPreset, activeCategory, maxPrice]);
 
   useEffect(() => {
     closeProductOverlay({ restoreCheckout: false });
@@ -1911,7 +1938,6 @@ const App: React.FC = () => {
   }, [tagScores]);
 
   const handleResetData = async () => {
-    if (!confirm("Are you sure? This will clear your style persona and all saved items.")) return;
 
     try {
       await Firestore.clearMySwipes();
@@ -2115,6 +2141,8 @@ const App: React.FC = () => {
       setAllProducts(prev => prev.filter((product) => product.id !== currentProduct.id));
       pushUndo({ product: currentProduct, direction: "left", action: null });
       logLocalActivity("pass");
+      try { navigator.vibrate?.(18); } catch {}
+      showActionToast("undo", "Passed", { actionLabel: "Undo", onAction: undoLast });
       setCurrentIndex(i => i + 1);
       return;
     }
@@ -2609,7 +2637,21 @@ const App: React.FC = () => {
       },
     }).catch(console.warn);
 
-    showActionToast("save", "Saved to wishlist");
+    const newCount = userPrefs.wishlist.filter((p) => p.id !== product.id).length + 1;
+    try { navigator.vibrate?.(40); } catch {}
+    if (newCount === 5) {
+      showActionToast("save", "5 picks saved — ready to shop? →", {
+        actionLabel: "Get links",
+        onAction: () => openCheckout("save_nudge_5"),
+      });
+    } else if (newCount === 3) {
+      showActionToast("save", "3 picks saved! Get your checkout links →", {
+        actionLabel: "Send me links",
+        onAction: () => openCheckout("save_nudge_3"),
+      });
+    } else {
+      showActionToast("save", "Saved to wishlist");
+    }
   };
 
   const addProductToBagFromOverlay = (product: Product) => {
@@ -3194,6 +3236,60 @@ const App: React.FC = () => {
   const nextBrowseProduct = currentIndex + 1 < products.length ? products[currentIndex + 1] : null;
   const savedUpgradeCount = userPrefs.wishlist.length;
 
+  // Set of saved product IDs for VerticalFeed
+  const savedProductIds = useMemo(
+    () => new Set(userPrefs.wishlist.map((p) => p.id)),
+    [userPrefs.wishlist]
+  );
+
+  // Scroll-pass handler: logs and marks swiped but does NOT remove from allProducts
+  const handleScrollPass = React.useCallback((product: Product) => {
+    setUserPrefs((prev) => ({
+      ...prev,
+      dislikedProducts: [...prev.dislikedProducts, product],
+    }));
+    void Firestore.logEvent({
+      type: "swipe_pass",
+      productId: product.id,
+      source: "feed_scroll",
+      view: "browsing",
+      meta: {
+        category: product.category ?? "",
+        tags: Array.isArray(product.tags) ? product.tags : [],
+        price: Number(product.price ?? 0),
+      },
+    }).catch(console.warn);
+    bumpTags(product, -1);
+    swipedRef.current.add(product.id);
+    logLocalActivity("pass");
+    // Track consecutive no-interaction scrolls for nudge
+    setNoInteractionCount((n) => {
+      const next = n + 1;
+      if (next === 10) setShowScrollNudge(true);
+      return next;
+    });
+  }, []);
+
+  const handleShare = React.useCallback(async (product: Product) => {
+    const name = product.displayName || product.name || "this pick";
+    const url = window.location.origin;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: name,
+          text: `Check out this room upgrade I found on Seligo: ${name}`,
+          url,
+        });
+        void Firestore.logEvent({ type: "share_click", productId: product.id, view: "browsing", source: "feed_scroll" }).catch(() => {});
+      } else {
+        await navigator.clipboard.writeText(`${name} — ${url}`);
+        showActionToast("save", "Link copied to clipboard");
+      }
+    } catch {
+      // user cancelled share — no-op
+    }
+  }, []);
+
   const openCheckout = (source: string) => {
     void Firestore.logEvent({
       type: "checkout_open",
@@ -3333,46 +3429,38 @@ const App: React.FC = () => {
   function buildShareUrl() {
     const u = new URL(window.location.href);
     u.searchParams.set("utm_source", "share");
-    u.searchParams.set("utm_medium", "roomscan");
+    u.searchParams.set("utm_medium", "picks");
     u.searchParams.set("utm_campaign", "viral");
-    u.searchParams.set("open", "roomscan");
     return u.toString();
   }
 
-  const shareLink = async () => {
+  const shareMyPicks = async () => {
+    const picks = [...userPrefs.wishlist, ...userPrefs.cart];
+    const count = picks.length;
+    const previewNames = picks
+      .slice(0, 2)
+      .map((p) => p.displayName || p.name)
+      .filter(Boolean)
+      .join(" & ");
+    const text = count > 0
+      ? `I found ${count} room upgrade${count === 1 ? "" : "s"} on Seligo${previewNames ? ` — including ${previewNames}` : ""}. Check it out:`
+      : "Discover affordable home decor on Seligo:";
     const url = buildShareUrl();
     let shared = false;
-
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: "Seligo — RoomScan picks",
-          text: "Check out my curated picks 👇",
-          url,
-        });
+        await navigator.share({ title: "My Seligo picks", text, url });
         shared = true;
       }
-    } catch {
-      // user cancelled share, or share failed — fall back below
-    }
-
+    } catch { /* user cancelled */ }
     if (!shared) {
       try {
-        await navigator.clipboard.writeText(url);
-        shared = true;
-        alert("Link copied!");
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        showActionToast("save", "Link copied!");
       } catch {
-        alert("Couldn’t copy link. Please copy from the address bar.");
-        return;
+        showActionToast("save", "Couldn’t copy link");
       }
     }
-
-    await Firestore.logEvent({
-      type: "share_click",
-      view: "roomscan",
-      source: "roomscan_cleared",
-      meta: { url },
-    });
   };
 
   const refineRecommendations = async () => {
@@ -3487,10 +3575,20 @@ const App: React.FC = () => {
     feedTotal > 0
       ? (feedPosition / feedTotal) * 100
       : 0;
-  const feedCountLabel =
-    feedTotal > 0
-      ? `${feedPosition} of ${feedTotal} in your feed`
-      : "Curating your feed";
+
+  // Category chip counts (unswiped, unblocked products per category)
+  const catCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const [catId, relatedTags] of Object.entries(CAT_TAG_MAP)) {
+      counts[catId] = allProducts.filter((p) => {
+        if (swipedRef.current.has(p.id)) return false;
+        if (isBlockedProduct(p)) return false;
+        const pTags = Array.isArray(p.tags) ? p.tags.map((t) => String(t).toLowerCase()) : [];
+        return p.category === catId || pTags.some((t) => relatedTags.includes(t));
+      }).length;
+    }
+    return counts;
+  }, [allProducts]);
 
   // Profile page derived values
   const vibe = userPrefs.persona.detectedVibe || "Still learning";
@@ -3602,6 +3700,24 @@ const App: React.FC = () => {
         : "Saved items stay easy to revisit while you build your room shortlist.";
   const overlayOpen = !!selectedProduct || showCheckout || showHowItWorks || showSavedSheet || showBagSheet;
 
+  // Related products for "You may also like" in overlay
+  const relatedOverlayProducts = useMemo(() => {
+    if (!selectedProduct) return [];
+    const selTags = Array.isArray(selectedProduct.tags)
+      ? selectedProduct.tags.map((t) => String(t).toLowerCase())
+      : [];
+    const selCat = String(selectedProduct.category ?? "").toLowerCase();
+    return allProducts
+      .filter((p) => {
+        if (p.id === selectedProduct.id) return false;
+        const pTags = Array.isArray(p.tags) ? p.tags.map((t) => String(t).toLowerCase()) : [];
+        const pCat = String(p.category ?? "").toLowerCase();
+        if (pCat === selCat) return true;
+        return pTags.some((t) => selTags.includes(t));
+      })
+      .slice(0, 6);
+  }, [selectedProduct?.id, allProducts]);
+
   // Views
   if (view === 'auth' || view === 'interests') {
     return (
@@ -3654,22 +3770,26 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-slate-100 flex items-center justify-center p-0 sm:p-6">
-      <div className="w-full max-w-md h-[100dvh] sm:h-[min(100dvh,900px)] rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200 bg-slate-50">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-200 via-slate-100 to-orange-50/40 flex items-center justify-center p-0 sm:p-6">
+      <div className="w-full max-w-md h-[100dvh] sm:h-[min(100dvh,900px)] rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200/60 bg-[#fafaf9]">
       <div className="h-full flex flex-col">
       {/* Header */}
       <header
-        className="sticky top-0 z-[250] bg-white/90 backdrop-blur-xl border-b border-slate-100"
+        className="sticky top-0 z-[250] bg-white/98 backdrop-blur-xl border-b border-slate-100 shadow-[0_2px_16px_rgba(15,23,42,0.07)]"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <div className="h-[4.75rem] px-6 flex items-center justify-between">
+        {/* Brand accent strip */}
+        <div className="h-[3px] w-full" style={{ background: "var(--seligo-cta)" }} />
+        <div className="h-[4.5rem] px-5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
-              <img
-                src={seligoLogo}
-                alt="Seligo"
-                className="w-10 h-10 rounded-xl object-cover shadow"
-              />
+              <div className="w-10 h-10 rounded-[13px] overflow-hidden shadow-[0_2px_8px_rgba(14,165,233,0.25)] ring-2 ring-[var(--seligo-primary)]/20">
+                <img
+                  src={seligoLogo}
+                  alt="Seligo"
+                  className="w-full h-full object-cover"
+                />
+              </div>
               {isAlgorithmRunning && (
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--seligo-accent)] rounded-full flex items-center justify-center animate-pulse border-2 border-white">
                   <BrainCircuit className="w-2 h-2 text-white" />
@@ -3678,35 +3798,42 @@ const App: React.FC = () => {
             </div>
 
             <div className="min-w-0">
-              <div className="font-black text-[17px] leading-tight text-slate-900 truncate">
-                Seligo
+              <div className="flex items-center gap-2">
+                <div className="font-black text-[19px] leading-tight tracking-[-0.03em] text-slate-900 truncate">
+                  Seligo
+                </div>
+                {streak > 1 && (
+                  <div className="inline-flex items-center gap-1 rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-black text-white shadow-sm">
+                    🔥 {streak}d
+                  </div>
+                )}
               </div>
-              <div className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-[var(--seligo-accent)] truncate">
-                {isAlgorithmRunning ? "Algorithm refining…" : "ML active"}
+              <div className="text-[10px] font-bold text-slate-400 truncate">
+                {isAlgorithmRunning ? "Refining your picks…" : "Swipe to discover room upgrades"}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={undoLast}
               disabled={undoCount === 0}
-              className="w-10 h-10 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-40 transition-colors"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 transition-all"
               aria-label="Undo"
               title="Undo"
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-4.5 h-4.5" />
             </button>
 
             <button
               onClick={openSavedSheet}
-              className="relative w-10 h-10 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-rose-500 transition-colors"
+              className="relative w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all"
               aria-label="Saved"
               title="Saved"
             >
-              <Heart className="w-5 h-5" />
+              <Heart className="w-[18px] h-[18px]" />
               {userPrefs.wishlist.length > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[10px] flex items-center justify-center rounded-full font-extrabold border-2 border-white">
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] flex items-center justify-center rounded-full font-extrabold border border-white">
                   {userPrefs.wishlist.length}
                 </span>
               )}
@@ -3714,13 +3841,13 @@ const App: React.FC = () => {
 
             <button
               onClick={openBagSheet}
-              className="relative w-10 h-10 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-[var(--seligo-primary)] transition-colors"
+              className="relative w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[var(--seligo-primary)] hover:bg-sky-50 transition-all"
               aria-label="Bag"
               title="Bag"
             >
-              <ShoppingBag className="w-5 h-5" />
+              <ShoppingBag className="w-[18px] h-[18px]" />
               {userPrefs.cart.length > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[var(--seligo-primary)] text-white text-[10px] flex items-center justify-center rounded-full font-extrabold border-2 border-white">
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-[var(--seligo-primary)] text-white text-[9px] flex items-center justify-center rounded-full font-extrabold border border-white">
                   {userPrefs.cart.length}
                 </span>
               )}
@@ -3731,10 +3858,12 @@ const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main
-        className="flex-1 overflow-y-auto no-scrollbar bg-slate-50"
+        className="flex-1 overflow-y-auto no-scrollbar bg-[#fafaf9]"
         style={{
           paddingBottom:
-            view === "roomscan"
+            view === "browsing"
+              ? "0"
+              : view === "roomscan"
               ? "calc(4.0rem + env(safe-area-inset-bottom))"
               : "calc(4.75rem + env(safe-area-inset-bottom))",
         }}
@@ -3764,154 +3893,214 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {view === 'browsing' && (
+        {view === "browsing" && (
           <Screen
             animate={false}
             className={[
               overlayOpen ? "pointer-events-none" : "",
-              "px-0 pt-0 pb-0 bg-transparent",
+              "px-0 pt-0 pb-0 bg-transparent h-full flex flex-col",
             ].join(" ")}
           >
-            {currentIndex < products.length ? (
-              <div className="min-h-full bg-[#fffaf6]">
-                <div className="pointer-events-none fixed inset-0 overflow-hidden">
-                  <div className="absolute left-1/2 top-[20%] h-72 w-72 -translate-x-1/2 rounded-full bg-orange-200/30 blur-3xl" />
-                  <div className="absolute left-1/2 top-[45%] h-80 w-80 -translate-x-1/2 rounded-full bg-sky-200/20 blur-3xl" />
-                </div>
-
-                <div className="relative z-10 px-4 pt-3">
-                  <div className="mx-auto max-w-[420px] rounded-[1.35rem] border border-white/70 bg-white/82 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                        Discover
-                      </div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 text-right">
-                        {feedCountLabel}
-                      </div>
-                    </div>
-
-                    <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-300/80">
-                      <div
-                        className="h-full rounded-full transition-all duration-500 shadow-sm"
-                        style={{
-                          width: `${browseProgressPercent}%`,
-                          background: "linear-gradient(90deg, var(--seligo-cta), #f97316)",
-                        }}
-                      />
-                    </div>
-
-                    <div className="mt-2.5 flex items-center justify-between gap-3">
-                      <div className="text-[11px] font-semibold text-slate-500">
-                        Saved {savedUpgradeCount} pick{savedUpgradeCount === 1 ? "" : "s"}
-                      </div>
-
+            {/* Sticky header: filter bar */}
+            <div className="shrink-0 bg-white/95 backdrop-blur-sm border-b border-slate-100 z-20">
+              <div className="px-4 pt-2.5 pb-1">
+                <div className="mx-auto max-w-[520px] flex items-center gap-2">
+                  <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    {([
+                      { id: null, label: "All", emoji: "✦", on: "bg-slate-900 text-white", off: "border border-slate-200 bg-white text-slate-600" },
+                      { id: "lighting", label: "Lighting", emoji: "💡", on: "bg-amber-500 text-white", off: "border border-amber-200 bg-amber-50 text-amber-700" },
+                      { id: "wall-decor", label: "Wall Art", emoji: "🖼️", on: "bg-violet-600 text-white", off: "border border-violet-200 bg-violet-50 text-violet-700" },
+                      { id: "storage", label: "Storage", emoji: "🧺", on: "bg-sky-600 text-white", off: "border border-sky-200 bg-sky-50 text-sky-700" },
+                      { id: "mirrors", label: "Mirrors", emoji: "🪞", on: "bg-slate-700 text-white", off: "border border-slate-200 bg-slate-50 text-slate-700" },
+                      { id: "cozy-bedroom", label: "Bedroom", emoji: "🛏️", on: "bg-rose-500 text-white", off: "border border-rose-200 bg-rose-50 text-rose-700" },
+                      { id: "desk-setup", label: "Desk", emoji: "🖥️", on: "bg-teal-600 text-white", off: "border border-teal-200 bg-teal-50 text-teal-700" },
+                      { id: "plants", label: "Plants", emoji: "🪴", on: "bg-green-600 text-white", off: "border border-green-200 bg-green-50 text-green-700" },
+                    ] as { id: string | null; label: string; emoji: string; on: string; off: string }[]).map((chip) => (
                       <button
+                        key={chip.id ?? "all"}
                         type="button"
-                        onClick={() => setShowTuneModal(true)}
-                        className="text-[11px] font-black text-[var(--seligo-primary)] hover:underline"
+                        onClick={() => { setActiveCategory(chip.id); setCurrentIndex(0); }}
+                        className={`shrink-0 flex items-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-black transition-all ${
+                          activeCategory === chip.id ? chip.on : chip.off
+                        }`}
                       >
-                        ✨ Tune feed
+                        <span>{chip.emoji}</span>
+                        <span>{chip.label}</span>
+                        {chip.id !== null && (catCounts[chip.id] ?? 0) > 0 && (
+                          <span className="text-[9px] font-black opacity-70">{catCounts[chip.id]}</span>
+                        )}
                       </button>
-                    </div>
+                    ))}
+                    <div className="shrink-0 w-px h-4 bg-slate-200 mx-0.5" />
+                    {([
+                      { label: "Any $", value: null },
+                      { label: "$25", value: 25 },
+                      { label: "$50", value: 50 },
+                      { label: "$100", value: 100 },
+                    ] as { label: string; value: number | null }[]).map((opt) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => { setMaxPrice(opt.value); setCurrentIndex(0); }}
+                        className={`shrink-0 rounded-full px-2.5 py-1.5 text-[10px] font-black transition-all ${
+                          maxPrice === opt.value ? "bg-emerald-600 text-white" : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
-                </div>
-
-                {activeSeoPreset && (
-                  <div className="relative z-10 mx-auto max-w-[420px] px-4 pt-3">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="text-sm font-semibold text-slate-900">
-                        {activeSeoPreset.label}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        Picked for this guide page. Swipe to save what fits your space.
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div
-                  className="relative z-10 flex items-start justify-center px-3 pt-3"
-                  style={{
-                    minHeight:
-                      "calc(100svh - var(--seligo-header-h,76px) - 7rem - env(safe-area-inset-bottom))",
-                  }}
-                >
-                  <div className="relative">
-                    {nextBrowseProduct ? (
-                      <>
-                        <div className="pointer-events-none absolute inset-x-3 top-3 h-full rounded-[2rem] bg-white/70 shadow-lg scale-[0.97]" />
-                        <div className="pointer-events-none absolute inset-x-5 top-5 h-[98%] overflow-hidden rounded-[1.9rem] opacity-40 shadow-md scale-[0.94]">
-                          <img
-                            src={nextBrowseProduct.imageUrl}
-                            alt={nextBrowseProduct.name}
-                            className="h-full w-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-white/45 backdrop-blur-[1px]" />
-                        </div>
-                      </>
-                    ) : null}
-
-                    <div className="relative animate-[seligo-pop-in_280ms_ease-out]">
-                      <SwipeCard
-                        key={products[currentIndex].id}
-                        product={products[currentIndex]}
-                        onSwipe={handleSwipe}
-                        onSelectAction={handleAction}
-                        onTap={() => openProductOverlay(products[currentIndex], { view: "browsing", source: "discover_tap" })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative z-10 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2">
-                  <div className="mx-auto max-w-[420px] text-center text-[11px] font-semibold text-slate-400">
-                    Swipe right to save upgrades
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTuneModal(true)}
+                    className="shrink-0 flex items-center gap-1 rounded-full bg-[var(--seligo-primary)]/10 px-2.5 py-1.5 text-[10px] font-black text-[var(--seligo-primary)]"
+                  >
+                    ✨
+                  </button>
                 </div>
               </div>
-            ) : (
-              <div className="min-h-full bg-[#fffaf6]">
-                <div className="pointer-events-none fixed inset-0 overflow-hidden">
-                  <div className="absolute left-1/2 top-[20%] h-72 w-72 -translate-x-1/2 rounded-full bg-orange-200/30 blur-3xl" />
-                  <div className="absolute left-1/2 top-[45%] h-80 w-80 -translate-x-1/2 rounded-full bg-sky-200/20 blur-3xl" />
-                </div>
 
+              {/* Progress bar */}
+              <div className="h-[3px] bg-slate-100">
                 <div
-                  className="relative z-10 flex items-center justify-center px-6"
+                  className="h-full transition-all duration-500"
                   style={{
-                    minHeight:
-                      "calc(100svh - var(--seligo-header-h,76px) - 7rem - env(safe-area-inset-bottom))",
+                    width: `${browseProgressPercent}%`,
+                    background: "var(--seligo-cta)",
                   }}
-                >
-                  <div className="max-w-[300px] animate-in fade-in zoom-in rounded-[2.5rem] border border-slate-100 bg-white p-8 text-center shadow-xl">
-                    <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--seligo-primary)]/10">
-                      <History className="h-8 w-8 text-[var(--seligo-primary)]" />
+                />
+              </div>
+            </div>
+
+            {/* Feed or empty state */}
+            <div className="relative flex-1 min-h-0">
+              {/* Floating "Get my links" CTA — appears after 3+ saves */}
+              {savedUpgradeCount >= 3 && !getLinksNudgeDismissed && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center">
+                  <div className="pointer-events-auto flex items-center rounded-full shadow-[0_8px_28px_rgba(249,115,22,0.45)]" style={{ background: "var(--seligo-cta)" }}>
+                    <button
+                      type="button"
+                      onClick={() => openCheckout("floating_cta")}
+                      className="flex items-center gap-2 pl-5 pr-3 py-3 text-[13px] font-black text-white transition-all active:scale-[0.97]"
+                    >
+                      🛍️ {savedUpgradeCount} saved — get my links
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGetLinksNudgeDismissed(true)}
+                      className="pr-4 pl-1 py-3 text-white/70 text-base leading-none hover:text-white"
+                      aria-label="Dismiss"
+                    >×</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Scroll nudge — appears after 10 consecutive no-interaction scrolls */}
+              {showScrollNudge && (
+                <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-4">
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-2.5 shadow-md backdrop-blur-sm">
+                    <span className="text-[12px] font-bold text-sky-700">Tap ♡ on anything you like to get better picks</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowScrollNudge(false)}
+                      className="text-sky-400 text-base leading-none"
+                    >×</button>
+                  </div>
+                </div>
+              )}
+
+              {products.length > 0 ? (
+                <VerticalFeed
+                  products={products}
+                  savedIds={savedProductIds}
+                  onSave={(product) => {
+                    saveProductFromOverlay(product);
+                    setNoInteractionCount(0);
+                    setShowScrollNudge(false);
+                    try { navigator.vibrate?.(40); } catch {}
+                  }}
+                  onPass={handleScrollPass}
+                  onShop={(product) => openRetailerLink(product, { source: "product_overlay", view: "browsing", placement: "product_overlay_cta" })}
+                  onShare={handleShare}
+                  onTap={(product) => openProductOverlay(product, { view: "browsing", source: "discover_tap" })}
+                  onActiveIndexChange={(idx) => setCurrentIndex(idx)}
+                  endCard={
+                    <div className="flex h-full flex-col items-center justify-center px-8 text-center bg-white">
+                      {userPrefs.wishlist.length > 0 && (
+                        <div className="mb-5 flex justify-center gap-2">
+                          {userPrefs.wishlist.slice(0, 4).map((p, i) => (
+                            <div
+                              key={p.id}
+                              className="h-16 w-16 overflow-hidden rounded-xl border-2 border-white shadow-lg"
+                              style={{ transform: `rotate(${[-4, 2, -2, 3][i] ?? 0}deg)` }}
+                            >
+                              <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <h3 className="text-xl font-black text-slate-900">
+                        {userPrefs.wishlist.length + userPrefs.cart.length > 0 ? "Your room is coming together 🎉" : "You’ve seen it all"}
+                      </h3>
+                      <p className="mt-2 mb-6 text-[13px] text-slate-500 max-w-[240px]">
+                        {userPrefs.wishlist.length + userPrefs.cart.length > 0
+                          ? `${userPrefs.wishlist.length + userPrefs.cart.length} picks saved — get your direct shopping links.`
+                          : "New arrivals drop regularly. Tune your feed or start over."}
+                      </p>
+                      <div className="w-full max-w-[260px] space-y-2.5">
+                        {userPrefs.wishlist.length + userPrefs.cart.length > 0 && (
+                          <button
+                            onClick={() => openCheckout("end_of_feed_nudge")}
+                            className="w-full rounded-2xl py-3.5 font-extrabold text-white shadow-[0_6px_20px_rgba(249,115,22,0.35)]"
+                            style={{ background: "linear-gradient(135deg, #f97316, var(--seligo-cta))" }}
+                          >
+                            Shop my picks →
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowTuneModal(true)}
+                          className="w-full rounded-2xl py-3.5 font-extrabold text-white"
+                          style={{ background: "var(--seligo-primary)" }}
+                        >
+                          ✨ Tune my feed
+                        </button>
+                        <button
+                          onClick={handleResetData}
+                          className="w-full rounded-2xl bg-slate-100 py-3 text-[13px] font-extrabold text-slate-600"
+                        >
+                          Start over
+                        </button>
+                      </div>
                     </div>
-                    <h3 className="mb-2 text-lg font-black text-slate-900">No more items</h3>
-
+                  }
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center px-6">
+                  <div className="max-w-[280px] w-full rounded-[2.5rem] border border-slate-100 bg-white p-8 text-center shadow-xl">
+                    <div className="mx-auto mb-4 text-4xl">🔍</div>
+                    <h3 className="mb-2 text-lg font-black text-slate-900">No matches</h3>
                     <p className="mb-5 text-sm text-slate-500">
-                      You’ve reached the end for these interests.
+                      No picks match{activeCategory ? ` "${activeCategory.replace("-", " ")}"` : ""}{maxPrice !== null ? ` under $${maxPrice}` : ""}. Try widening your filters.
                     </p>
-
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
                       <button
-                        onClick={() => setShowTuneModal(true)}
-                        className="w-full rounded-2xl py-4 font-extrabold text-white transition-colors"
+                        onClick={() => { setActiveCategory(null); setMaxPrice(null); setCurrentIndex(0); }}
+                        className="w-full rounded-2xl py-3.5 font-extrabold text-white"
                         style={{ background: "var(--seligo-cta)" }}
                       >
-                        Change interests
+                        Clear filters
                       </button>
                       <button
-                        onClick={handleResetData}
-                        className="w-full rounded-2xl bg-slate-100 py-4 font-extrabold text-slate-900 transition-colors hover:bg-slate-200"
+                        onClick={() => setShowTuneModal(true)}
+                        className="w-full rounded-2xl bg-slate-100 py-3.5 font-extrabold text-slate-900"
                       >
-                        Reset passes
+                        ✨ Tune my feed
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </Screen>
         )}
 
@@ -3980,9 +4169,10 @@ const App: React.FC = () => {
                     type="button"
                     onClick={closeProductOverlay}
                     aria-label="Back"
-                    className="absolute left-3 top-3 z-40 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/80 bg-white shadow-lg"
+                    className="absolute left-3 top-3 z-40 flex h-10 items-center gap-1.5 px-3 justify-center rounded-2xl border border-white/80 bg-white shadow-lg text-[12px] font-black text-slate-900"
                   >
-                    <ArrowLeft className="h-5 w-5 text-slate-900" />
+                    <ArrowLeft className="h-4 w-4 text-slate-900" />
+                    Back to feed
                   </button>
 
                   <div className="absolute bottom-3 right-3 rounded-xl border border-white/70 bg-white/95 px-3 py-1.5 text-sm font-black text-slate-900 shadow-sm">
@@ -4085,13 +4275,78 @@ const App: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  {/* You may also like */}
+                  {relatedOverlayProducts.length > 0 && (
+                    <div className="mt-6">
+                      <div className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                        You may also like
+                      </div>
+                      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+                        {relatedOverlayProducts.map((p) => (
+                          <div
+                            key={p.id}
+                            className="shrink-0 w-[130px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                          >
+                            <div className="h-[90px] bg-slate-100">
+                              <img
+                                src={p.imageUrl}
+                                alt={p.name}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                            <div className="p-2.5">
+                              <div className="line-clamp-2 text-[11px] font-bold leading-tight text-slate-900">
+                                {p.displayName || p.name}
+                              </div>
+                              <div className="mt-1 text-[12px] font-black text-slate-900">
+                                ${Number(p.price || 0).toFixed(2)}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRetailerLink(p, {
+                                    source: "product_overlay",
+                                    view: "browsing",
+                                    placement: "product_overlay_cta",
+                                  })
+                                }
+                                className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl py-1.5 text-[10px] font-black text-white"
+                                style={{ background: "var(--seligo-cta)" }}
+                              >
+                                Shop <ArrowRight className="w-3 h-3" strokeWidth={2.8} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div
-                  className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-6 pt-3.5 backdrop-blur-xl"
+                  className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-6 pt-4 backdrop-blur-xl"
                   style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
                 >
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Primary: Shop Now */}
+                  <button
+                    onClick={() => {
+                      if (!selectedProduct) return;
+                      openRetailerLink(selectedProduct, {
+                        source: "product_overlay",
+                        view: selectedProductContext?.view ?? "browsing",
+                        placement: "product_overlay_cta",
+                      });
+                    }}
+                    className="w-full h-14 rounded-2xl font-black text-white text-[15px] flex items-center justify-center gap-2 shadow-[0_8px_24px_rgba(249,115,22,0.38)] transition-all active:scale-[0.97]"
+                    style={{ background: "linear-gradient(135deg, #f97316, var(--seligo-cta))" }}
+                  >
+                    <span>Shop on {getProductRetailerName(selectedProduct)}</span>
+                    <ArrowRight className="w-5 h-5" strokeWidth={2.6} />
+                  </button>
+
+                  {/* Secondary: Save / Add to Bag */}
+                  <div className="mt-2.5 grid grid-cols-2 gap-2.5">
                     <button
                       onClick={() => {
                         if (!selectedProduct) return;
@@ -4099,9 +4354,9 @@ const App: React.FC = () => {
                         closeProductOverlay();
                       }}
                       disabled={overlayIsSaved}
-                      className="h-12 rounded-2xl bg-slate-100 font-extrabold text-slate-900 disabled:opacity-60 disabled:cursor-default"
+                      className="h-11 rounded-xl bg-slate-100 text-[13px] font-extrabold text-slate-900 disabled:opacity-50 disabled:cursor-default transition-colors hover:bg-slate-200"
                     >
-                      {overlaySaveLabel}
+                      {overlayIsSaved ? "✓ Saved" : "♡ Save"}
                     </button>
 
                     <button
@@ -4111,21 +4366,14 @@ const App: React.FC = () => {
                         closeProductOverlay();
                       }}
                       disabled={overlayIsInBag}
-                      className="flex h-12 items-center justify-center gap-2 rounded-2xl font-extrabold text-white disabled:opacity-60 disabled:cursor-default"
-                      style={{ background: "var(--seligo-cta)" }}
+                      className="h-11 rounded-xl border border-slate-200 bg-white text-[13px] font-extrabold text-slate-900 disabled:opacity-50 disabled:cursor-default transition-colors hover:bg-slate-50"
                     >
-                      <span>{overlayBagLabel}</span>
-                      {!overlayIsInBag ? <span className="opacity-90">•</span> : null}
-                      {!overlayIsInBag ? <span>${Number(selectedProduct.price || 0).toFixed(2)}</span> : null}
+                      {overlayIsInBag ? "✓ In Bag" : "🛍 Add to Bag"}
                     </button>
                   </div>
 
-                  <div className="mt-3 space-y-1.5">
-                    <div className="text-[11px] text-slate-500">
-                      {overlayFooterText}
-                    </div>
-
-                    <div className="text-[11px] leading-relaxed text-slate-500">
+                  <div className="mt-3">
+                    <div className="text-[10px] leading-relaxed text-slate-400">
                       {AFFILIATE_DISCLOSURE_TEXT}
                     </div>
                   </div>
@@ -4719,11 +4967,13 @@ const App: React.FC = () => {
 
               <div className="pt-2">
                 <button
-                  onClick={shareLink}
+                  onClick={shareMyPicks}
                   className="w-full py-4 rounded-2xl text-white font-black shadow-sm"
                   style={{ background: "var(--seligo-cta)" }}
                 >
-                  Share Seligo
+                  {userPrefs.wishlist.length + userPrefs.cart.length > 0
+                    ? `Share my picks (${userPrefs.wishlist.length + userPrefs.cart.length})`
+                    : "Share Seligo"}
                 </button>
 
                 <button
@@ -4734,7 +4984,7 @@ const App: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={handleResetData}
+                  onClick={() => setShowResetConfirm(true)}
                   className="w-full py-4 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl font-black uppercase tracking-[0.22em] text-xs flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors mt-3"
                 >
                   <RotateCcw className="w-4 h-4" />
@@ -4835,57 +5085,56 @@ const App: React.FC = () => {
         )}
 
         {view === "cart" && (
-          <Screen className="bg-white">
+          <Screen className="bg-[#fafaf9]">
             <PageHeader
-              title="Your shortlist"
-              subtitle="Review your saved picks and bag before checkout."
+              title={shortlistCount >= 3 ? "Ready to shop? 🛍️" : "Your shortlist"}
+              subtitle="Review your picks — then shop each one directly."
               onClose={() => goView("browsing", "shortlist_close")}
             />
 
             <div className="pt-3 pb-32">
               {shortlistCount > 0 ? (
                 <div className="space-y-3.5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                    Checkout
-                  </div>
-
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  {/* Sticky subtotal + CTA at the top */}
+                  <div className="rounded-[1.5rem] border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-50/60 p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                          Bag subtotal
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">
+                          Bag total
                         </div>
-                        <div className="mt-1 text-[28px] leading-none font-black text-slate-900">
+                        <div className="mt-0.5 text-[32px] leading-none font-black text-slate-900">
                           ${shortlistSubtotal.toFixed(2)}
                         </div>
-                        <div className="mt-2 text-xs text-slate-500">
-                          {userPrefs.cart.length} in bag • {userPrefs.wishlist.length} saved
+                        <div className="mt-1.5 text-xs font-semibold text-slate-500">
+                          {userPrefs.cart.length} in bag · {userPrefs.wishlist.length} saved
                         </div>
                       </div>
 
-                      <div className="rounded-[1.15rem] border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                          Total picks
-                        </div>
-                        <div className="mt-1 text-lg font-black text-slate-900">
-                          {shortlistCount}
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-right shadow-sm">
+                          <div className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                            Picks
+                          </div>
+                          <div className="text-lg font-black text-slate-900">
+                            {shortlistCount}
+                          </div>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="mt-3 text-[11px] leading-relaxed text-slate-500">
-                      Retailer pages open after you continue.
                     </div>
 
                     <button
                       type="button"
                       onClick={() => openCheckout("shortlist_summary")}
                       disabled={userPrefs.cart.length === 0}
-                      className="mt-4 h-12 w-full rounded-2xl text-white font-extrabold disabled:opacity-50 shadow-[0_16px_34px_rgba(251,146,60,0.30)]"
-                      style={{ background: "linear-gradient(90deg, var(--seligo-cta), #f97316)" }}
+                      className="mt-4 h-14 w-full rounded-2xl text-white text-[15px] font-black disabled:opacity-50 shadow-[0_8px_24px_rgba(249,115,22,0.40)] flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                      style={{ background: "linear-gradient(135deg, #f97316, var(--seligo-cta))" }}
                     >
-                      Review retailer links
+                      Send me my checkout links
+                      <ArrowRight className="w-5 h-5" strokeWidth={2.6} />
                     </button>
+                    <div className="mt-2 text-center text-[10px] font-semibold text-slate-400">
+                      One email · Direct retailer links · No spam
+                    </div>
                   </div>
 
                   {userPrefs.cart.length > 0 && (
@@ -4932,11 +5181,31 @@ const App: React.FC = () => {
                               </button>
 
                               <div className="mt-2.5 space-y-2.5">
-                                <div className="text-[15px] font-black text-slate-900">
-                                  ${Number(item.price ?? 0).toFixed(2)}
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[15px] font-black text-slate-900">
+                                    ${Number(item.price ?? 0).toFixed(2)}
+                                  </div>
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                                    {getProductRetailerName(item)}
+                                  </span>
                                 </div>
 
                                 <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openRetailerLink(item, {
+                                        source: "bag_sheet",
+                                        view: "cart",
+                                        placement: "checkout_cart_item",
+                                      })
+                                    }
+                                    className="flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-black text-white shadow-sm transition-all active:scale-[0.97]"
+                                    style={{ background: "var(--seligo-cta)" }}
+                                  >
+                                    Shop <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.6} />
+                                  </button>
+
                                   <button
                                     type="button"
                                     onClick={() => shortlistActions.onMoveCartItemToSaved(item.id)}
@@ -5005,15 +5274,35 @@ const App: React.FC = () => {
                               </button>
 
                               <div className="mt-2.5 space-y-2.5">
-                                <div className="text-[15px] font-black text-slate-900">
-                                  ${Number(item.price ?? 0).toFixed(2)}
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[15px] font-black text-slate-900">
+                                    ${Number(item.price ?? 0).toFixed(2)}
+                                  </div>
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                                    {getProductRetailerName(item)}
+                                  </span>
                                 </div>
 
                                 <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
+                                    onClick={() =>
+                                      openRetailerLink(item, {
+                                        source: "saved_sheet",
+                                        view: "browsing",
+                                        placement: "checkout_saved_item",
+                                      })
+                                    }
+                                    className="flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-black text-white shadow-sm transition-all active:scale-[0.97]"
+                                    style={{ background: "var(--seligo-cta)" }}
+                                  >
+                                    Shop <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.6} />
+                                  </button>
+
+                                  <button
+                                    type="button"
                                     onClick={() => shortlistActions.onMoveSavedItemToBag(item.id)}
-                                    className="h-9 rounded-xl bg-[var(--seligo-cta)] px-3 text-[13px] font-extrabold text-white shadow-sm transition-colors hover:brightness-105"
+                                    className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-700 transition-colors hover:bg-slate-100"
                                   >
                                     Add to Bag
                                   </button>
@@ -5035,26 +5324,45 @@ const App: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="min-h-[52vh] flex flex-col items-center justify-center text-center">
+                <div className="flex flex-col items-center px-4 pt-8 pb-4 text-center">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-100 bg-orange-50">
                     <ShoppingBag className="h-6 w-6 text-[var(--seligo-cta)]" />
                   </div>
-
-                  <div className="mt-4 text-base font-black text-slate-900">
-                    Your shortlist is empty
+                  <div className="mt-3 text-base font-black text-slate-900">Nothing here yet</div>
+                  <div className="mt-1 max-w-[17rem] text-[13px] text-slate-500">
+                    Swipe right or tap Save on any pick to build your shortlist.
                   </div>
-
-                  <div className="mt-2 max-w-[18rem] text-sm leading-relaxed text-slate-500">
-                    Add room upgrades from Explore, Saved, or RoomScan to compare them here.
-                  </div>
-
                   <button
                     type="button"
                     onClick={() => goView("browsing", "shortlist_empty_go_explore")}
-                    className="mt-4 h-11 rounded-2xl bg-slate-900 px-5 font-extrabold text-white"
+                    className="mt-4 h-11 rounded-2xl px-6 font-extrabold text-white shadow-[0_4px_16px_rgba(249,115,22,0.32)]"
+                    style={{ background: "linear-gradient(135deg, #f97316, var(--seligo-cta))" }}
                   >
-                    Go to Explore
+                    Start swiping →
                   </button>
+                  {allProducts.length > 0 && (
+                    <div className="mt-6 w-full">
+                      <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Popular right now</div>
+                      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+                        {allProducts.slice(0, 6).map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => openProductOverlay(p, { view: "cart", source: "bag_sheet" })}
+                            className="shrink-0 w-[110px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm text-left"
+                          >
+                            <div className="h-[78px] bg-slate-100">
+                              <img src={p.imageUrl} alt={p.name} className="h-full w-full object-contain" />
+                            </div>
+                            <div className="p-2">
+                              <div className="line-clamp-2 text-[10px] font-bold leading-tight text-slate-800">{p.displayName || p.name}</div>
+                              <div className="mt-0.5 text-[11px] font-black text-slate-900">${Number(p.price || 0).toFixed(0)}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -5137,31 +5445,64 @@ const App: React.FC = () => {
         </div>
       ) : null}
 
+      {/* Reset confirmation modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center pointer-events-auto">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowResetConfirm(false)} />
+          <div className="relative w-full max-w-md mx-auto rounded-t-[2rem] sm:rounded-[2rem] bg-white p-6 shadow-2xl"
+            style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}>
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100">
+              <RotateCcw className="w-5 h-5 text-rose-600" />
+            </div>
+            <div className="font-black text-lg text-slate-900">Reset all data?</div>
+            <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
+              This clears your style persona, saved items, and swipe history. It can't be undone.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowResetConfirm(false); void handleResetData(); }}
+                className="w-full py-3.5 rounded-2xl bg-rose-600 text-white font-black hover:bg-rose-700 active:scale-[0.98] transition-all"
+              >
+                Yes, reset everything
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="w-full py-3.5 rounded-2xl bg-slate-100 text-slate-900 font-black hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!overlayOpen && (
         <nav
-          className="sticky bottom-0 z-[300] bg-white/90 backdrop-blur-xl border-t border-slate-100"
+          className="sticky bottom-0 z-[300] bg-white/95 backdrop-blur-xl border-t border-slate-100/80 shadow-[0_-4px_24px_rgba(15,23,42,0.06)]"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          <div className="h-[4.75rem] px-6 flex items-center justify-between">
+          <div className="h-[4.75rem] px-4 flex items-center justify-around">
             <NavItem
               active={view === "browsing"}
               label="Explore"
               onClick={() => goView("browsing", "bottom_nav_explore")}
-              icon={<Compass className="w-6 h-6" />}
+              icon={<Compass className="w-5 h-5" />}
             />
 
             <NavItem
               active={view === "profile"}
               label="Style"
               onClick={() => goView("profile", "bottom_nav_style")}
-              icon={<BrainCircuit className="w-6 h-6" />}
+              icon={<BrainCircuit className="w-5 h-5" />}
             />
 
             <NavItem
               active={view === "roomscan"}
-              label="RoomScan"
+              label="Scan"
               onClick={() => goView("roomscan", "bottom_nav_roomscan")}
-              icon={<Scan className="w-6 h-6" />}
+              icon={<Scan className="w-5 h-5" />}
             />
 
             <NavItem
@@ -5170,9 +5511,9 @@ const App: React.FC = () => {
               onClick={() => goView("cart", "bottom_nav_bag")}
               icon={
                 <div className="relative">
-                  <ShoppingBag className="w-6 h-6" />
+                  <ShoppingBag className="w-5 h-5" />
                   {userPrefs.cart.length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--seligo-primary)] rounded-full border-2 border-white" />
+                    <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-[var(--seligo-cta)] rounded-full border-2 border-white" />
                   )}
                 </div>
               }

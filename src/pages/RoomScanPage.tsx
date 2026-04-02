@@ -1003,10 +1003,34 @@ export default function RoomScanPage({
             </div>
 
             {/* ── Success banner ─────────── */}
-            {scanStatus === "success" && !showClearedCard && picks.length === 0 && (
-              <div className="mx-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-2.5 text-sm font-bold text-emerald-800">
-                <span className="text-base">✅</span>
-                <span>Scan complete — your feed has been updated.</span>
+            {scanStatus === "success" && !showClearedCard && picks.length === 0 && pickStatus !== "loading" && (
+              <div className="mx-4 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 text-2xl">🔍</div>
+                  <div>
+                    <div className="font-black text-slate-900">No specific picks found</div>
+                    <p className="mt-1 text-sm text-slate-500 leading-relaxed">
+                      We couldn't match room-specific picks from this photo, but your feed has been updated based on the room's style.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onGoExplore}
+                  className="mt-4 w-full py-3 rounded-2xl font-black text-white text-sm"
+                  style={{ background: "var(--seligo-cta)" }}
+                >
+                  Browse updated feed →
+                </button>
+                {onScanAgain && (
+                  <button
+                    type="button"
+                    onClick={onScanAgain}
+                    className="mt-2 w-full py-3 rounded-2xl bg-slate-100 text-slate-900 font-black text-sm hover:bg-slate-200 transition-colors"
+                  >
+                    Try a different photo
+                  </button>
+                )}
               </div>
             )}
 
@@ -1043,13 +1067,24 @@ export default function RoomScanPage({
                       See more →
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void onEmailPicks()}
-                    className="mt-3 w-full h-11 rounded-2xl bg-[var(--seligo-cta)] hover:brightness-105 text-white text-sm font-extrabold transition-all active:scale-[0.99]"
-                  >
-                    Email me these picks
-                  </button>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        picks.forEach(({ product }) => void onSavePick(product));
+                      }}
+                      className="flex-1 h-11 rounded-2xl border-2 border-slate-200 bg-white text-slate-800 text-sm font-extrabold transition-all active:scale-[0.99]"
+                    >
+                      Save all picks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onEmailPicks()}
+                      className="flex-1 h-11 rounded-2xl bg-[var(--seligo-cta)] hover:brightness-105 text-white text-sm font-extrabold transition-all active:scale-[0.99]"
+                    >
+                      Email my picks
+                    </button>
+                  </div>
                 </div>
 
                 {/* Pick cards */}

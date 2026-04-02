@@ -1,0 +1,22 @@
+{
+  "name": "Seligo — Swipe Home Decor",
+  "short_name": "Seligo",
+  "description": "Discover affordable room upgrades by swiping. Curated decor for bedrooms, dorms, and small spaces.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0EA5E9",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -561,12 +561,9 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
               <div className="mt-3 rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-black text-slate-900">Send this shortlist to your inbox?</div>
+                    <div className="font-black text-slate-900">Save your picks + checkout links</div>
                     <div className="mt-1 text-sm text-slate-600">
-                      Get retailer links, saved picks, and price-drop alerts in one place.
-                    </div>
-                    <div className="mt-2 text-xs text-slate-600">
-                      One email now makes future checkout 1-tap.
+                      We'll email you your shortlist so it's easy to revisit and check out later — no account needed.
                     </div>
                   </div>
 
@@ -617,7 +614,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         }}
                         className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
                       >
-                        Send me links
+                        Send me my links
                       </button>
 
                       <button
@@ -625,7 +622,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         onClick={onConfirmRetailer}
                         className="h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 font-extrabold hover:bg-slate-50 active:scale-95 transition"
                       >
-                        Continue without email
+                        Skip, just browse
                       </button>
                     </>
                   ) : (
@@ -635,7 +632,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         onClick={onConfirmRetailer}
                         className="h-12 rounded-2xl bg-[var(--seligo-cta)] hover:bg-[#fb8b3a] text-white font-extrabold active:scale-95 transition"
                       >
-                        Continue without email
+                        Skip, just browse
                       </button>
 
                       <button
@@ -657,14 +654,14 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                         }}
                         className="h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold active:scale-95 transition"
                       >
-                        Send me links
+                        Send me my links
                       </button>
                     </>
                   )}
                 </div>
 
                 <div className="mt-3 text-[11px] text-slate-400 leading-snug">
-                  Tip: Save your email once and future checkout becomes 1-tap.
+                  One email with your links. No spam, unsubscribe anytime.
                 </div>
               </div>
             )}
@@ -709,7 +706,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   <div className="font-black text-slate-900">Send my links</div>
                   <div className="mt-1 text-sm text-slate-600">
                     Includes {leadSource === "roomscan" ? "these picks" : lastBoughtName || "this item"} plus
-                    saved upgrades and price-drop alerts.
+                    saved upgrades so you can check out later.
                   </div>
 
                   {leadEmail?.trim() ? (
@@ -726,13 +723,18 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <input
-                      ref={leadInputRef}
-                      value={leadEmail}
-                      onChange={(e) => setLeadEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="mt-3 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
-                    />
+                    <>
+                      <div className="mt-3 text-[11px] text-slate-400 text-center">
+                        🔒 No spam. Just your picks, once.
+                      </div>
+                      <input
+                        ref={leadInputRef}
+                        value={leadEmail}
+                        onChange={(e) => setLeadEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="mt-2 w-full px-4 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--seligo-primary)]"
+                      />
+                    </>
                   )}
 
                   {leadError ? (
@@ -752,7 +754,7 @@ const CheckoutLinksModal: React.FC<CheckoutLinksModalProps> = ({
                   </button>
 
                   {leadEmail?.trim() ? (
-                    <div className="text-[11px] text-slate-500 mt-2">Retailer links + price drops</div>
+                    <div className="text-[11px] text-slate-500 mt-2">Your shortlist + retailer links in one email</div>
                   ) : null}
 
                   <button

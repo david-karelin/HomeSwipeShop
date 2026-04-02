@@ -12,6 +12,10 @@ export function getBrowserAmazonAssocTag() {
   return readOptionalString((import.meta as ViteImportMeta).env?.VITE_AMAZON_ASSOC_TAG);
 }
 
+export function getBrowserWayfairAffiliateId() {
+  return readOptionalString((import.meta as ViteImportMeta).env?.VITE_WAYFAIR_AFFILIATE_ID);
+}
+
 export function resolveNodeAmazonAssocTag() {
   if (typeof process === "undefined" || !process.env) {
     return {

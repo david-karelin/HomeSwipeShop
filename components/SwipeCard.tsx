@@ -32,6 +32,8 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const [isSwiping, setIsSwiping] = useState<"left" | "right" | null>(null);
   const [feedback, setFeedback] = useState<null | "save" | "pass">(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   // Ref-based drag for smooth performance (avoids React re-renders during drag)
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -88,12 +90,6 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       ? "Affordable pick"
       : "Statement pick";
 
-  const fitLabel =
-    price <= 30
-      ? "Quick budget win"
-      : price <= 50
-      ? "Renter-friendly find"
-      : "Standout upgrade";
 
   useEffect(() => {
     return () => {
@@ -234,7 +230,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const absDrag = Math.abs(dragProgress);
 
   // Simplified shadow - no longer depends on drag state for performance
-  const cardShadow = "0 22px 60px rgba(249,115,22,0.10), 0 18px 45px rgba(0,0,0,0.18)";
+  const cardShadow = "0 24px 64px rgba(15,23,42,0.14), 0 8px 24px rgba(249,115,22,0.08)";
 
   return (
     <div
@@ -293,135 +289,111 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           animation: "none",
         }}
       >
-        <div className="relative h-[30svh] min-h-[200px] max-h-[280px] sm:h-[38svh] sm:min-h-[250px] sm:max-h-[380px] bg-[#F3F4F6]">
+        {/* Image area — clean, max 2 overlays */}
+        <div className="relative h-[34svh] min-h-[220px] max-h-[300px] sm:h-[40svh] sm:max-h-[360px] bg-[#F5F5F4]">
+          {!imgLoaded && !imgError && (
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-[shimmer_1.4s_ease-in-out_infinite] bg-[length:200%_100%]" />
+          )}
+          {imgError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-100">
+              <div className="text-3xl opacity-30">🛋️</div>
+              <div className="text-[11px] font-semibold text-slate-400">Image unavailable</div>
+            </div>
+          )}
           <img
             src={product.imageUrl}
             alt={displayProductName}
-            className="pointer-events-none absolute inset-0 h-full w-full object-contain bg-[#F3F4F6]"
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgError(true)}
+            className={`pointer-events-none absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${imgLoaded ? "opacity-100" : "opacity-0"}`}
           />
 
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/16 via-transparent to-white/5" />
+          {/* Subtle bottom gradient for legibility */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
 
+          {/* Swipe direction indicators — appear on drag */}
           <div
-            className="pointer-events-none absolute left-4 top-4 z-20 rotate-[-10deg] rounded-2xl border border-sky-300 bg-sky-50 px-3.5 py-2 shadow-sm"
-            style={{
-              opacity: "clamp(0, calc(var(--drag-x) / 70), 1)",
-            }}
+            className="pointer-events-none absolute left-4 top-4 z-20 rounded-2xl border-2 border-emerald-400 bg-emerald-500 px-4 py-2 shadow-lg"
+            style={{ opacity: "clamp(0, calc(var(--drag-x) / 60), 1)", rotate: "-8deg" }}
           >
-            <span className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">
-              Save
-            </span>
+            <span className="text-[12px] font-black uppercase tracking-[0.2em] text-white">Save ✓</span>
+          </div>
+          <div
+            className="pointer-events-none absolute right-4 top-4 z-20 rounded-2xl border-2 border-slate-400 bg-white px-4 py-2 shadow-lg"
+            style={{ opacity: "clamp(0, calc(var(--drag-x) / -60), 1)", rotate: "8deg" }}
+          >
+            <span className="text-[12px] font-black uppercase tracking-[0.2em] text-slate-700">Pass ✕</span>
           </div>
 
-          <div
-            className="pointer-events-none absolute right-4 top-4 z-20 rotate-[10deg] rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2 shadow-sm"
-            style={{
-              opacity: "clamp(0, calc(var(--drag-x) / -70), 1)",
-            }}
-          >
-            <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-600">
-              Pass
-            </span>
-          </div>
-
-          <div className="pointer-events-none absolute left-4 right-4 top-4 flex items-start justify-between gap-2">
-            <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white">
-              {priceBadge}
-            </div>
-
-            <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white">
+          {/* Top-right: vibe tag only */}
+          <div className="pointer-events-none absolute right-3 top-3">
+            <div className="rounded-full bg-black/60 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-sm">
               {displayVibeTag}
             </div>
           </div>
 
-          <div className="pointer-events-none absolute left-4 right-4 bottom-4 flex items-end justify-between gap-3">
-            <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[10px] font-bold text-white/90">
-              {fitLabel}
+          {/* Bottom-left: price + trending if curated */}
+          <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col items-start gap-1.5">
+            <div className="rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-black text-white backdrop-blur-sm">
+              {displayPrice ?? priceBadge}
             </div>
-
-            <div className="rounded-full border border-white/20 bg-white/92 px-3 py-1.5 text-[10px] font-black text-slate-900 shadow-sm">
-              Tap for details
-            </div>
+            {product.isCurated && (
+              <div className="rounded-full bg-orange-500/90 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-sm">
+                🔥 Trending
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="border-t border-slate-100 bg-white px-4 pt-3 pb-4">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-sky-500/85">
-            <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
-            <span>Swipeable room upgrade</span>
-          </div>
-
-          <div className="mt-2 flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h2 className="overflow-hidden text-[17px] font-black leading-[1.06] tracking-[-0.03em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-                {shortTitle}
-              </h2>
-
-              <p className="mt-1.5 max-w-[94%] overflow-hidden text-[12px] leading-5 text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-                {shortDescription}
-              </p>
+        {/* Card content — cleaner hierarchy */}
+        <div className="bg-white px-4 pt-3.5 pb-4">
+          {/* Brand + price row */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#0EA5E9]">
+              <Sparkles className="h-3 w-3" strokeWidth={2.6} />
+              <span>Seligo pick</span>
             </div>
-
-            {displayPrice ? (
-              <div className="shrink-0 rounded-2xl bg-slate-50 px-3 py-2 text-[15px] font-black text-slate-950 shadow-sm">
+            {displayPrice && (
+              <div className="text-[18px] font-black tracking-tight text-slate-900">
                 {displayPrice}
               </div>
-            ) : null}
+            )}
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            <div className="rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-orange-600">
-              Seligo pick
-            </div>
-            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-              {priceBadge}
-            </div>
-          </div>
+          {/* Product name */}
+          <h2 className="text-[16px] font-black leading-[1.15] tracking-[-0.025em] text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">
+            {shortTitle}
+          </h2>
 
-          <div className="pointer-events-auto mt-5 flex items-center gap-3">
+          {/* Description */}
+          <p className="mt-1.5 text-[12px] leading-[1.6] text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">
+            {shortDescription}
+          </p>
+
+          {/* Action buttons */}
+          <div className="pointer-events-auto mt-4 flex items-center gap-2.5">
             <button
               type="button"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                triggerSwipe("left");
-              }}
-              className="group flex flex-1 items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-slate-50 py-3 text-slate-700 transition hover:bg-slate-100 active:scale-[0.96]"
+              onClick={(e) => { e.stopPropagation(); triggerSwipe("left"); }}
+              className="flex h-12 w-[38%] items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-white text-slate-600 transition active:scale-[0.96] hover:border-slate-300 hover:bg-slate-50"
               aria-label="Pass"
             >
-              <X
-                className="h-5 w-5 transition-transform duration-200 group-hover:scale-105"
-                strokeWidth={2.4}
-              />
-              <span className="text-[13px] font-black tracking-[-0.01em]">
-                Pass
-              </span>
+              <X className="h-4.5 w-4.5" strokeWidth={2.6} />
+              <span className="text-[14px] font-black">Pass</span>
             </button>
 
             <button
               type="button"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                triggerSwipe("right");
-              }}
-              className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-[18px] bg-gradient-to-r from-[var(--seligo-cta)] to-orange-500 py-3 text-white shadow-[0_16px_34px_rgba(251,146,60,0.34)] transition hover:brightness-[1.03] active:scale-[0.96]"
+              onClick={(e) => { e.stopPropagation(); triggerSwipe("right"); }}
+              className="relative flex h-12 flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl text-white shadow-[0_6px_20px_rgba(249,115,22,0.45)] transition active:scale-[0.96]"
+              style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
               aria-label="Save"
             >
-              <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-              <Heart
-                className="relative z-10 h-5 w-5 fill-current transition-transform duration-200 group-hover:scale-105"
-                strokeWidth={2.2}
-              />
-              <span className="relative z-10 text-[13px] font-black tracking-[-0.01em]">
-                Save
-              </span>
+              <Heart className="h-4.5 w-4.5 fill-current" strokeWidth={0} />
+              <span className="text-[14px] font-black">Save</span>
             </button>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold text-slate-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--seligo-cta)]" />
-            <span>Swipe or tap to explore faster</span>
           </div>
         </div>
       </div>
